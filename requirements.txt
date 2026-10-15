@@ -1,0 +1,6 @@
+boto3
+botocore[crt]
+fastapi
+uvicorn
+redis
+pytest

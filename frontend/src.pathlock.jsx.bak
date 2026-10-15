@@ -1,0 +1,42 @@
+import React,{useState,useEffect} from 'react';
+import{createRoot}from'react-dom/client';
+import{ShieldCheck,ArrowUpRight,Check,LockKeyhole,Database,Box,User,GitBranch,ArrowRight,Play,Scissors,LoaderCircle,X}from'lucide-react';
+import './style.css';
+
+function App(){
+ const[state,S]=useState(null),[stage,T]=useState('ready'),[busy,B]=useState(''),[error,E]=useState(''),[finding,F]=useState(null),[decision,D]=useState(null),[probe,P]=useState(null),[baseline,Q]=useState(null),[why,W]=useState(false);
+ async function api(op,body={}){const r=await fetch('/api/'+op,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.detail);return d}
+ async function refresh(){const r=await fetch('/api/state');if(!r.ok)throw Error('Cloud context unavailable');S(await r.json())}
+ useEffect(()=>{refresh().catch(e=>E(e.message))},[]);
+ async function run(op){B(op);E('');try{
+  if(op==='analyze'){F(await api(op));T('found')}
+  if(op==='probe'){const d=await api(op);P(d);Q(d);T('exposed')}
+  if(op==='plan'){D(await api(op,{finding:finding.finding}));T('planned')}
+  if(op==='apply'){P(await api(op,{decision:decision.decision,approved:true}));T('verified');await refresh()}
+  if(op==='session'){await api(op);await refresh();T('ready');F(null);D(null);P(null);Q(null)}
+ }catch(e){E(e.message)}finally{B('')}}
+ const safe=stage==='verified'||state?.paths===0, discovered=stage!=='ready', elevated=state?.scenario===2?'Reporting Access':'Analytics Access';
+ const title={ready:'A working app. A hidden route.',found:'One connection changes everything.',exposed:'The risk is real.',planned:'Less access. Same business.',verified:'Closed path. Open for business.'}[stage];
+ const next={ready:['analyze','Analyze cloud'],found:['probe','Verify exposure'],exposed:['plan','Find safe fix'],planned:['apply','Approve & apply']}[stage];
+ function Node({x,y,icon:Icon,name,sub,danger}){return <div className={'node '+(danger?'danger':'')} style={{left:x+'%',top:y+'%'}}><span className="nodeicon"><Icon size={23}/></span><strong>{name}</strong><small>{sub}</small></div>}
+ return <main>
+ <header><a className="brand" href="/"><span><ShieldCheck/></span>PathLock<small>CONTEXT THAT ACTS</small></a><div className="connections"><span className={state?'online':''}>AWS {state?'connected':'connecting'}</span><span className={state?'online':''}>FalkorDB context</span></div><span className="avatar">A</span></header>
+ <section className="intro"><div><div className="eyebrow">CLOUD CONTEXT SECURITY <span>/</span> ORDER SUPPORT</div><h1>{title}</h1><p>Follow the connections. Make the smallest safe change.</p></div><div className="session">SESSION {String(state?.scenario||1).padStart(2,'0')}<small>ap-southeast-2 · Demo sandbox</small></div></section>
+ <section className="workspace"><div className="canvas"><div className="canvashead"><span><GitBranch size={15}/> Live permission paths</span><span className={'pill '+(safe?'good':'')}>{safe?'Protected':'Connected context'}</span></div>
+ <div className={'graph '+(busy==='analyze'?'exploring':'')}><svg viewBox="0 0 800 400" preserveAspectRatio="none"><path className="legit" d="M80 112 H272 H472 H672"/>{(discovered||safe)&&<path className={safe?'cut':'risk'} d="M472 122 V276 H672"/>}</svg>
+ <Node x={10} y={25} icon={User} name="Customer" sub="Order #582"/><Node x={34} y={25} icon={Box} name="Order App" sub="Public application"/><Node x={59} y={25} icon={ShieldCheck} name="Order Access" sub="Required permission"/><Node x={84} y={25} icon={Database} name="Orders" sub="Business data"/>
+ {(discovered||safe)&&<><Node x={59} y={66} icon={GitBranch} name={elevated} sub="Elevated permission" danger={!safe}/><Node x={84} y={66} icon={LockKeyhole} name="Private Secret" sub="Fake demo data" danger={!safe}/>{safe&&<span className="cutmark"><Scissors size={20}/> Access cut</span>}</>}</div>
+ <div className="graphfoot"><span><i className="dot green"/>Required business route</span><span><i className={'dot '+(safe?'gray':'red')}/>{safe?'Sensitive route blocked':'Sensitive permission route'}</span><button onClick={()=>W(!why)}>Why this path? <ArrowUpRight size={14}/></button></div>
+ <div className="order"><span className="ordericon"><Box/></span><div><small>PROTECTED CAPABILITY</small><strong>Where is Order #582?</strong></div><span className="shipped">{state?.order?.status==='SHIPPED'?<><Check size={16}/> Shipped</>:'Checking…'}</span></div></div>
+ <aside><div className="eyebrow">{stage==='ready'?'YOUR NEXT MOVE':stage==='verified'?'VERIFICATION':'AGENT WORKSPACE'}</div><div className="agenticon">{busy?<LoaderCircle className="spin"/>:safe?<ShieldCheck/>:<GitBranch/>}</div>
+ <h2>{busy?'Working with live evidence…':{ready:'See beyond a single permission.',found:'Dangerous path found.',exposed:'Private Secret is reachable.',planned:'Minimum safe change.',verified:'Remediation verified.'}[stage]}</h2>
+ <p>{busy?'Reading and checking the real sandbox. This step may take a moment.':decision?.explanation||finding?.explanation||'Two agents. One shared graph. A clear path from cloud context to a verified action.'}</p>
+ {stage==='planned'&&<><div className="alternatives">{decision.alternatives.map((a,i)=><div key={a.name} style={{animationDelay:i*.25+'s'}}><span>{a.business?<Check size={16}/>:<X size={16}/>}</span><div>{a.name}<small>{a.business?'Orders preserved':'Orders broken'} · {a.secure?'Secure':'Risk remains'}</small></div></div>)}</div><div className="recommend">Deny Order Access → {elevated}<strong>1 permission change</strong></div></>}
+ {probe&&<div className="results"><div><span>Private Secret</span><strong className={probe.security.access==='denied'?'ok':'bad'}>{stage==='verified'&&baseline?.security.access==='granted'?'GRANTED → DENIED':probe.security.access==='denied'?'ACCESS DENIED':'ACCESS GRANTED'}</strong></div><div><span>Order Lookup</span><strong className="ok">{probe.business.status==='SHIPPED'?'WORKING':'FAILED'}</strong></div></div>}
+ {error&&<div role="alert" className="error">{error}</div>}{next&&<button className="primary" disabled={!!busy||!state} onClick={()=>run(next[0])}>{busy?<LoaderCircle className="spin" size={18}/>:<Play size={15}/>} {next[1]} <ArrowRight size={18}/></button>}
+ {stage==='verified'&&state?.scenario===1&&<button className="primary" disabled={!!busy} onClick={()=>run('session')}>Start new session <ArrowRight size={18}/></button>}<small className="real">REAL AWS ACTIONS · HUMAN APPROVAL REQUIRED</small></aside></section>
+ {why&&<section className="why"><button onClick={()=>W(false)} aria-label="Close explanation"><X/></button><h3>Why PathLock chose this</h3><p><b>Goal</b> Private Secret must become unreachable.</p><p><b>Preserve</b> Order Lookup must remain available.</p><p><b>Evidence</b> Order App → Order Access → {elevated} → Private Secret.</p><p><b>Selected cut</b> Explicitly deny assumption of {elevated}. Leave order permissions intact.</p></section>}
+ <section className="memory"><div><div className="eyebrow">DECISION MEMORY</div><h3>{state?.memory?.verified?.length?'Previous context loaded.':'Every decision leaves context.'}</h3><p>Stored in FalkorDB. Shared across both agents.</p></div><div className="chips"><span><ShieldCheck/>Order Lookup<small>MUST PRESERVE</small></span><span><Check/>Previous containment<small>{state?.memory?.verified?.length?'VERIFIED':'AWAITING VERIFICATION'}</small></span><span><User/>Commerce / Platform<small>PROJECT OWNER</small></span></div></section>
+ <footer><span>INVESTIGATOR <ArrowRight size={13}/> FALKORDB CONTEXT <ArrowRight size={13}/> REMEDIATOR</span><span>Connected context → minimum safe action → verified outcome.</span></footer></main>
+}
+createRoot(document.getElementById('root')).render(<App/>);

@@ -1,0 +1,13 @@
+
+/.aws/
+
+/.venv/
+__pycache__/
+
+/frontend/node_modules/
+/frontend/dist/
+/.pytest_cache/
+
+/frontend/test-results/
+/frontend/playwright-report/
+/test-results/
