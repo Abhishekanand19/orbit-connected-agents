@@ -4,3 +4,6 @@ fastapi
 uvicorn
 redis
 pytest
+
+# ORBIT foundation (independent of the legacy AWS backend)
+-r backend/orbit/requirements.txt
