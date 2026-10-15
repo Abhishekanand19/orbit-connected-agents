@@ -1,0 +1,20 @@
+name: orbit-foundation
+services:
+  falkordb:
+    image: falkordb/falkordb@sha256:107455e862a824e45e8e9f5a7fbfdf5e00a08b14e13eae2577c72fd9e3f59ba6
+    ports:
+      - "127.0.0.1:${FALKORDB_PORT:-6380}:6379"
+    environment:
+      BROWSER: '0'
+      REDIS_ARGS: "--appendonly yes --appendfsync everysec --save 60 1"
+    volumes:
+      - orbit_graph_data:/var/lib/falkordb/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+volumes:
+  orbit_graph_data:
+
