@@ -11,3 +11,9 @@ __pycache__/
 /frontend/test-results/
 /frontend/playwright-report/
 /test-results/
+
+.env
+.env.*
+!.env.example
+.coverage
+htmlcov/
