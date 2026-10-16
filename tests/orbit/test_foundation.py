@@ -200,3 +200,17 @@ def test_four_hop_boundaries_and_unverified_assignments(client):
     assert client.put('/api/relationships',json={'source':'chain:0','type':'ASSIGNED_TO','target':'person',
         'properties':{'evidence_state':'GUESS'}}).status_code==422
     assert client.delete('/api/nodes/chain:0').status_code==409
+
+def test_entity_discovery_search_filter_pagination(client):
+    seed(client.app.state.service)
+    first=client.get('/api/nodes?limit=2').json()
+    second=client.get('/api/nodes?limit=2&offset=2').json()
+    assert first['next_offset']==2
+    assert not {n['id'] for n in first['items']} & {n['id'] for n in second['items']}
+    people=client.get('/api/nodes?type=Person').json()['items']
+    assert {n['id'] for n in people}=={'sample:priya','sample:dad'}
+    assert [n['id'] for n in client.get('/api/nodes?q=HOSPITAL&type=Event').json()['items']]==['sample:appointment']
+    assert client.get('/api/nodes',params={'q':"' MATCH (n) DELETE n //"}).json()['items']==[]
+    assert client.get('/api/nodes?type=Unknown').status_code==422
+    assert client.get('/api/nodes?limit=501').status_code==422
+    assert client.get('/api/nodes?offset=-1').status_code==422
