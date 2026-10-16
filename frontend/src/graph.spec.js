@@ -116,3 +116,27 @@ test('empty real graph has an honest empty state',async({page,request},testInfo)
  await expect(page.locator('[data-entity-id]')).toHaveCount(0);
  await expect(page.locator('[data-edge-id]')).toHaveCount(0);
 });
+
+test('live chat extraction appears in both graph views and survives reload',async({page,request})=>{
+ test.setTimeout(150000);
+ await page.goto('/');
+ await page.getByLabel('Message',{exact:true}).fill('My colleague Celia Veridian might review my proposal on Friday.');
+ await page.getByRole('button',{name:'Send message',exact:true}).click();
+ await expect(page.locator('.message.assistant .message-bubble')).toBeVisible({timeout:120000});
+ const reply=await page.locator('.message.assistant .message-bubble').innerText();expect(reply.length).toBeGreaterThan(10);
+ await page.reload();await expect(page.locator('.message.assistant .message-bubble')).toHaveText(reply);
+ await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
+ await page.getByLabel('Search graph entities').fill('Celia Veridian');
+ await page.getByRole('button',{name:'Explore Celia Veridian',exact:true}).click();
+ const directory=await (await request.get(api+'/api/nodes?q=Celia%20Veridian')).json();
+ const person=directory.items.find(n=>n.type==='Person');expect(person).toBeTruthy();
+ for(const mode of ['Graph View','Simple View']){
+  await page.getByRole('button',{name:mode,exact:true}).click();
+  await page.getByRole('button',{name:'Refresh graph'}).click();
+  const graph=await (await request.post(api+'/api/graph/subgraph',{data:{root_id:person.id,hops:2,direction:'both',limit:100}})).json();
+  expect(graph.nodes.some(n=>n.type==='Claim'&&n.properties.status==='PENDING')).toBeTruthy();
+  expect(graph.edges.length).toBeGreaterThan(0);
+  await expect.poll(()=>ids(page,'data-entity-id')).toEqual(graph.nodes.map(n=>n.id).sort());
+  await expect.poll(()=>ids(page,'data-edge-id')).toEqual(graph.edges.map(e=>e.id).sort());
+ }
+});
