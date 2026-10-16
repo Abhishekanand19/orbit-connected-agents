@@ -51,6 +51,7 @@ Interactive OpenAPI docs: `http://127.0.0.1:8001/docs`.
 | Method and route | Operation |
 |---|---|
 | GET `/api/health` | Execute a real read query; 503 if unavailable |
+| GET `/api/nodes` | Phase 02 entity discovery: case-insensitive `q` (ID/display text), optional entity `type`, `offset`, `limit` (1–500); returns `{items,next_offset}` |
 | PUT/GET/DELETE `/api/nodes/{id}` | Upsert, retrieve, delete an eligible entity |
 | PUT `/api/relationships` | Upsert a typed relationship |
 | GET/DELETE `/api/relationships/{id}` | Retrieve/remove an eligible relationship |
@@ -81,7 +82,9 @@ The Compose database is pinned by image digest, loopback-only, and isolated from
 
 The local API has an origin guard but no authentication, user isolation or production deployment hardening. Run it bound to loopback. Frontend data is deliberately not migrated or automatically synchronized. API records survive browser refresh because they are database-backed; the browser frontend continues using its own localStorage.
 
-NOT IMPLEMENTED: LLMs, extraction, agent orchestration, MCP, external integrations, automated decisions/actions, approval flows, routines, graph/tree UI, fuzzy deduplication, multi-user isolation.
+Phase 02 implements graph/tree UI over the existing subgraph API and adds read-only entity discovery. The two views share one snapshot and never write facts. See the root README for visualization behavior and evidence.
+
+NOT IMPLEMENTED: LLMs, extraction, agent orchestration, MCP, external integrations, automated decisions/actions, approval flows, routines, fuzzy deduplication, multi-user isolation.
 
 ## Documentation checked
 
