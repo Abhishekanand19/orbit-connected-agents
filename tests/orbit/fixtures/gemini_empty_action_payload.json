@@ -1,0 +1,57 @@
+{
+  "http_status": 200,
+  "model_version": "gemini-3.5-flash-lite",
+  "usage": {
+    "promptTokenCount": 28585,
+    "candidatesTokenCount": 208,
+    "totalTokenCount": 28793,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 28585
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "parsed": {
+    "actions": [
+      {
+        "kind": "task_create",
+        "payload": {},
+        "reason": "Propose assigning Ramesh's hospital follow-up escort to Priya for the afternoon window as an internal responsibility for approval.",
+        "affected_ids": [
+          "family:appointment",
+          "family:priya"
+        ],
+        "evidence_ids": [
+          "family:claim:available",
+          "impact:5174a123-f39a-4fbb-9b41-1e8cee65d7a3"
+        ],
+        "decision_id": "impact:5174a123-f39a-4fbb-9b41-1e8cee65d7a3"
+      }
+    ],
+    "missing_details": []
+  },
+  "validation_errors": [
+    {
+      "type": "missing",
+      "loc": [
+        "actions",
+        0,
+        "task_id"
+      ],
+      "msg": "Field required",
+      "input": {}
+    },
+    {
+      "type": "missing",
+      "loc": [
+        "actions",
+        0,
+        "changes"
+      ],
+      "msg": "Field required",
+      "input": {}
+    }
+  ]
+}
