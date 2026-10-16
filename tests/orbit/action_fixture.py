@@ -25,5 +25,13 @@ if __name__=='__main__':
         s.upsert_node(id,NodeUpsert(type='Task',properties={'name':name,'status':'OPEN'}))
         Actions(s).propose(ActionDraft(kind='task_update',payload={'task_id':id,'changes':{'status':'DONE'}},
             reason='Mark '+name+' complete after your review.',affected_ids=[id],evidence_ids=['approval:request']),'approval:request')
+    from backend.orbit.models import ClaimCreate,RelationshipUpsert
+    from backend.orbit.intelligence import ImpactEngine,ImpactRequest
+    s.upsert_node('receipt-event',NodeUpsert(type='Event',properties={'name':'Planning appointment'}))
+    s.upsert_node('receipt-booking',NodeUpsert(type='Booking',properties={'name':'Connected transport'}))
+    s.upsert_node('receipt-source',NodeUpsert(type='Source',properties={'name':'Confirmed schedule','kind':'MANUAL','observed_at':'2026-10-16T10:00:00Z'}))
+    s.create_claim(ClaimCreate(id='receipt-claim',text='The planning appointment changed',status='CONFIRMED',source_id='receipt-source',verification_source_id='receipt-source',subject_ids=['receipt-event'],observed_at='2026-10-16T10:00:00Z'))
+    s.upsert_relationship(RelationshipUpsert(source='receipt-booking',type='DEPENDS_ON',target='receipt-event',properties={'evidence_state':'CONFIRMED','evidence_id':'receipt-claim'}))
+    ImpactEngine(s).analyze(ImpactRequest(root_id='receipt-event',trigger_claim_id='receipt-claim'))
     db.close()
     uvicorn.run(create_app(settings),host='127.0.0.1',port=8002)
