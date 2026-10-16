@@ -179,5 +179,7 @@ class ImpactEngine:
   for observation in external_observations or []:
    refs[observation['id']]=E.Source;links.append((result.id,R.SUPPORTED_BY,observation['id']))
   props={'name':'Impact proposal: '+state,'summary':reason,'status':state,'record_kind':'IMPACT_ANALYSIS','executed':False,'analysis':result.model_dump_json()}
+  from .receipts import impact_snapshot
+  props['evidence_snapshot']=json.dumps(impact_snapshot(self.s,result))
   self.s.repo.atomic_record(result.id,E.Decision,props,fingerprint(result.model_dump()),refs,links)
   return result
