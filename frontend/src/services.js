@@ -33,3 +33,7 @@ export async function chatRequest(path, body) {
  const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Chat request failed. Please retry.');return data;
 }
 export const messageFromApi = n=>({id:n.id,role:n.properties.role,content:n.properties.content,createdAt:n.created_at});
+export async function actionRequest(path,body){
+ const response=await fetch(CHAT_API+path,{method:body===undefined?'GET':'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json','X-Orbit-UI':'1'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(130000)});
+ const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Action request failed. Refresh to check its saved status.');return data;
+}
