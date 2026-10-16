@@ -14,7 +14,7 @@ def retrieve(service, text, conversation):
     # Rank in FalkorDB before limiting, so unrelated message matches cannot
     # crowd out durable facts. Superseded claims remain in graph history.
     rows=service.repo.db.execute("""MATCH (n:Entity)
-        WHERE n.entity_type IN ['Person','Event','Task','Booking','Claim','Decision','Action','Outcome']
+        WHERE n.entity_type IN ['Person','Event','Task','Booking','Claim','Decision','Action','Outcome'] OR n.record_kind IN ['AGENT_FINDING','EXTERNAL_EVIDENCE']
         WITH n, size([term IN $terms WHERE toLower(coalesce(n.name,'')+' '+coalesce(n.text,'')+' '+coalesce(n.summary,'')+' '+coalesce(n.description,'')) CONTAINS term]) AS relevance
         WHERE relevance > 0
         RETURN properties(n), relevance
