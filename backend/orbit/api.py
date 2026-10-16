@@ -54,6 +54,8 @@ def create_app(settings: Settings | None = None):
     mount_actions(app,settings)
     from .receipts import mount_receipts
     mount_receipts(app)
+    from .demo import mount_demo
+    mount_demo(app)
     app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
         allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI'],allow_credentials=True)
 
