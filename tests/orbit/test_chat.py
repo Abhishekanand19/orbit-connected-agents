@@ -47,7 +47,7 @@ def test_live_chat_memory(settings):
 def test_provider_errors(monkeypatch,status,expected):
  import httpx
  monkeypatch.setenv('GEMINI_API_KEY','test-only-not-real')
- monkeypatch.setattr(httpx,'post',lambda *a,**kw:httpx.Response(status))
+ monkeypatch.setattr(httpx,'post',lambda *a,**kw:httpx.Response(status,request=httpx.Request('POST','https://provider.invalid/generate')))
  with pytest.raises(GraphError) as error:llm.generate('test',{})
  assert error.value.status==expected
 
