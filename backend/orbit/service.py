@@ -39,6 +39,8 @@ class GraphService:
         else:
             if old['type'] != request.type:
                 raise GraphError(409,'identity_conflict','Entity type cannot be changed.')
+            if old['properties'].get('record_kind') in ('APPROVAL_ACTION','ACTION_OUTCOME'):
+                raise GraphError(409,'managed_action','Use the approval workflow; action records cannot be edited directly.')
             if old['properties'].get('record_kind') == 'EXTERNAL_EVIDENCE':
                 raise GraphError(409,'immutable_external_evidence','External observations are immutable snapshots; retrieve a new observation instead.')
             # Provenance sources are immutable once referenced by a claim.
