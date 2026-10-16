@@ -29,6 +29,20 @@ class GraphRepository:
     def __init__(self, db: Database):
         self.db = db
 
+    def search_nodes(self, query='', kind=None, offset=0, limit=30):
+        """Read-only discovery for the graph picker; stable paginated ordering."""
+        rows = self.db.execute("""MATCH (n:Entity)
+            WHERE ($kind = '' OR n.entity_type=$kind) AND
+                (toLower(n.id) CONTAINS $query OR
+                 toLower(coalesce(n.name,n.title,n.text,n.content,'')) CONTAINS $query)
+            RETURN properties(n)
+            ORDER BY coalesce(n.name,n.title,n.text,n.content,n.id), n.id
+            SKIP $offset LIMIT $limit""",
+            {'query':query.lower(), 'kind':kind.value if kind else '',
+             'offset':offset, 'limit':limit+1},read=True)
+        return {'items':[node_view(r[0]) for r in rows[:limit]],
+                'next_offset':offset+limit if len(rows)>limit else None}
+
     def get_node(self, node_id):
         rows = self.db.execute('MATCH (n:Entity {id:$id}) RETURN properties(n)', {'id':node_id}, read=True)
         if not rows:
