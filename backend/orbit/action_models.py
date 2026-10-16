@@ -79,6 +79,33 @@ class ActionDraft(StrictModel):
         if self.kind=='task_create' and not self.payload['changes'].get('name'):raise ValueError('New tasks require a name')
         return self
 
+def action_output_schema(model, kinds=None):
+    """Expose the same kind-specific contracts to native JSON generation.
+
+    ActionDraft deliberately stores a plain dict for execution, but that generic
+    object is not a sufficient generation grammar. Keep its runtime validator.
+    """
+    from copy import deepcopy
+    schema=model.model_json_schema()
+    definitions=schema.setdefault('$defs',{})
+    draft=definitions.get('ActionDraft')
+    if not draft:return schema
+    branches=[]
+    for kind in sorted(kinds or PAYLOADS):
+        payload=PAYLOADS[kind].model_json_schema()
+        definitions.update(payload.pop('$defs',{}))
+        branch=deepcopy(draft)
+        branch['properties']['kind']={'type':'string','enum':[kind]}
+        branch['properties']['payload']=payload
+        if kind=='task_create':
+            properties=deepcopy(definitions['TaskProperties'])
+            properties['required']=sorted(set(properties.get('required',[]))|{'name'})
+            properties['properties']['name']={'type':'string','minLength':1,'maxLength':240}
+            branch['properties']['payload']['properties']['changes']=properties
+        branches.append(branch)
+    definitions['ActionDraft']={'anyOf':branches}
+    return schema
+
 class ProposalRequest(StrictModel):
     message_id: Id
     draft: ActionDraft
