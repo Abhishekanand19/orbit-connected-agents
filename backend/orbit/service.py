@@ -112,6 +112,9 @@ class GraphService:
             edges += [(request.id,R.MENTIONED_IN,request.message_id), (request.source_id,R.MENTIONED_IN,request.message_id)]
         if request.supersedes_id:
             self.require(request.supersedes_id,{E.Claim})
+            old=self.require(request.supersedes_id,{E.Claim})
+            if old['properties'].get('status') in ('CONFIRMED','REFUTED') and request.status.value in ('PENDING','UNVERIFIED'):
+                raise GraphError(409,'weaker_evidence','Uncertain evidence cannot supersede a confirmed or refuted claim. Store it alongside the existing evidence.')
             refs[request.supersedes_id] = E.Claim
             edges.append((request.id,R.SUPERSEDES,request.supersedes_id))
         props = {'text':request.text,'status':request.status.value,'source_id':request.source_id,
