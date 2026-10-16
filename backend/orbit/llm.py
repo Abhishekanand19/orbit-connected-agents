@@ -63,7 +63,7 @@ def generate(system, payload, schema=None, *, max_output_tokens=8192):
         # Keep size validation local; deeply nested bounds exceed Gemini's grammar budget.
         def compact(value):
             if isinstance(value, dict):
-                return {k:compact(v) for k,v in value.items() if k not in ('maxLength','minLength','maxItems','minItems','title','additionalProperties')}
+                return {k:compact(v) for k,v in value.items() if k not in ('maxLength','minLength','maxItems','minItems','title')}
             if isinstance(value,list):return [compact(v) for v in value]
             return value
         config.update(responseMimeType='application/json', responseJsonSchema=compact(schema))
