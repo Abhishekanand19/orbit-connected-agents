@@ -50,7 +50,7 @@ class GraphRepository:
         return node_view(rows[0][0])
 
     def upsert_node(self, node_id, kind: EntityType, properties):
-        guard = 'WITH n WHERE NOT (n)<-[:SUPPORTED_BY]-(:Claim)' if kind == EntityType.Source else ''
+        guard = 'WITH n WHERE NOT (n)<-[:SUPPORTED_BY|VERIFIED_BY]-(:Claim)' if kind == EntityType.Source else ''
         rows = self.db.execute(f'''MERGE (n:Entity:{kind.value} {{id:$id}})
             ON CREATE SET n.created_at=timestamp(), n.entity_type=$kind
             {guard}
