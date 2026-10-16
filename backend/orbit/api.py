@@ -172,6 +172,18 @@ def create_app(settings: Settings | None = None):
             offset=page['next_offset']
         return {'conversation_id':conversation,'messages':messages}
 
+    from .records import MemoryRecord, record
+
+    @app.post('/api/memory/records',response_model=NodeView)
+    def memory_record(body: MemoryRecord,s: Service):
+        return record(s,body)
+
+    @app.get('/api/memory/search')
+    def memory_search(s: Service,q: Annotated[str,Query(min_length=1,max_length=2000)],conversation_id: Id):
+        from .memory import retrieve
+        s.require(conversation_id,{EntityType.Conversation})
+        return retrieve(s,q,conversation_id)
+
     return app
 
 app = create_app()
