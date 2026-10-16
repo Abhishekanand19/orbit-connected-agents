@@ -2,6 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {ShieldCheck,Check,X,RefreshCw} from 'lucide-react';
 import {actionRequest} from './services';
 import './approvals.css';
+import {WhyButton} from './WhyView';
 
 const names={calendar:'Google Calendar',gmail:'Gmail',slack:'Slack',task:'Orbit Task Manager'};
 const terminal=new Set(['VERIFIED','REJECTED','SUPERSEDED']);
@@ -29,7 +30,7 @@ export default function ApprovalPanel(){
   <p className="approval-intro">Review the exact changes. Each approval applies to this action only.</p>
   {error&&<p role="alert" className="approval-error">{error}</p>}
   {actions.map(action=><details className="approval-card" key={action.id} open={!terminal.has(action.status)}>
-   <summary><span>{names[action.application]||action.application}</span><span className={`approval-status status-${action.status.toLowerCase()}`}>{action.status.replaceAll('_',' ')}</span></summary>
+   <summary><span>{names[action.application]||action.application}</span><span className={`approval-status status-${action.status.toLowerCase()}`}>{action.status.replaceAll('_',' ')}</span><WhyButton id={action.id}/></summary>
    <p>{action.reason}</p><p className="approval-affected">Affects: {action.affected_ids.map(id=>`${action.affected_labels?.[id]||id} (${id})`).join(', ')}</p>
    <div className="approval-exact"><strong>Exact proposed changes</strong><pre>{JSON.stringify(action.payload,null,2)}</pre></div>
    {action.application==='calendar'&&<p className="approval-affected">Calendar attendee changes can notify guests. Notification setting: {action.payload.send_updates}.</p>}
