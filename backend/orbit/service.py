@@ -7,6 +7,7 @@ from .models import EntityType as E, RelationType as R, TraversalRequest
 PROTECTED = {R.HAS_CONVERSATION,R.HAS_MESSAGE,R.AUTHORED_BY,R.SUPERSEDES}
 WORK = {E.Task,E.Event,E.Booking}
 RULES = {
+    R.AVAILABLE_FOR:({E.Person,E.Bot},WORK),
     R.ASSIGNED_TO:(WORK,{E.Person,E.Bot}), R.DEPENDS_ON:(WORK,WORK|{E.Person}),
     R.PARTICIPATES_IN:({E.Person,E.Bot},{E.Event,E.Conversation}),
     R.MENTIONED_IN:(set(E),{E.Message}),
@@ -38,10 +39,12 @@ class GraphService:
         else:
             if old['type'] != request.type:
                 raise GraphError(409,'identity_conflict','Entity type cannot be changed.')
+            if old['properties'].get('record_kind') == 'EXTERNAL_EVIDENCE':
+                raise GraphError(409,'immutable_external_evidence','External observations are immutable snapshots; retrieve a new observation instead.')
             # Provenance sources are immutable once referenced by a claim.
             if request.type == E.Source:
                 linked = self.repo.traverse(TraversalRequest(root_id=node_id,hops=1,
-                    direction='incoming',relationship_types=[R.SUPPORTED_BY],limit=1))
+                    direction='incoming',relationship_types=[R.SUPPORTED_BY,R.VERIFIED_BY],limit=1))
                 if linked['edges'] and any(old['properties'].get(k)!=v for k,v in request.properties.items()):
                     raise GraphError(409,'immutable_source','Create a new source instead of changing cited evidence.')
                 if linked['edges']:
@@ -60,6 +63,8 @@ class GraphService:
             allowed_source,allowed_target = RULES[request.type]
             if E(source['type']) not in allowed_source or E(target['type']) not in allowed_target:
                 raise GraphError(422,'invalid_endpoints','Relationship endpoints have incompatible entity types.')
+        if request.properties.evidence_id:
+            self.require(request.properties.evidence_id,{E.Claim,E.Source})
         return self.repo.upsert_edge(request.source,request.type,request.target,
             request.properties.model_dump(mode='json',exclude_none=True,exclude_unset=True))
 
@@ -106,6 +111,12 @@ class GraphService:
         for node_id in subjects:
             refs[node_id] = self.require(node_id,{E.Person,E.Event,E.Task,E.Booking,E.Bot,E.Decision,E.Action,E.Outcome})['type']
         edges = [(request.id,R.SUPPORTED_BY,request.source_id)] + [(request.id,R.RELATED_TO,i) for i in subjects]
+        if request.verification_source_id:
+            verifier=self.require(request.verification_source_id,{E.Source})
+            if verifier['properties'].get('kind') not in ('MANUAL','DOCUMENT') or not verifier['properties'].get('observed_at'):
+                raise GraphError(422,'invalid_verification','Verification requires a dated manual or document source.')
+            refs[request.verification_source_id]=E.Source
+            edges.append((request.id,R.VERIFIED_BY,request.verification_source_id))
         if request.message_id:
             self.require(request.message_id,{E.Message})
             refs[request.message_id] = E.Message
@@ -122,6 +133,7 @@ class GraphService:
         if request.message_id:
             props['message_id'] = request.message_id
         payload = request.model_dump(mode='json')
+        if request.verification_source_id is None:payload.pop('verification_source_id',None)
         payload['subject_ids'] = subjects
         return self.repo.atomic_record(request.id,E.Claim,props,fingerprint(payload),refs,edges,request.supersedes_id)
 
