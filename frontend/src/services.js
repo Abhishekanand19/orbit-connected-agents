@@ -26,3 +26,10 @@ export function saveWorkspace(storage, data) {
 }
 // API boundary for a later phase. No generated replies are simulated.
 export const chatService = { connection: 'unconfigured', createMessage(content) { return {id: crypto.randomUUID(), role: 'user', content: content.trim(), createdAt: Date.now()}; } };
+
+const CHAT_API = import.meta.env?.VITE_ORBIT_API_URL || 'http://127.0.0.1:8001';
+export async function chatRequest(path, body) {
+ const response=await fetch(CHAT_API+path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(150000)});
+ const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Chat request failed. Please retry.');return data;
+}
+export const messageFromApi = n=>({id:n.id,role:n.properties.role,content:n.properties.content,createdAt:n.created_at});
