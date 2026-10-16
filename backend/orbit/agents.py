@@ -28,6 +28,10 @@ class Finding(StrictModel):
  handoff:Assignment|None=None
  actions:list[ActionDraft]=Field(default_factory=list,max_length=4)
 
+class ActionPlan(StrictModel):
+ actions:list[ActionDraft]=Field(max_length=4)
+ missing_details:list[str]=Field(max_length=8)
+
 CAPABILITIES=('graph_read','authorized_external_read','analysis','proposal','draft')
 EXTERNAL_TOOLS=('gmail_read','calendar_read','slack_read')
 
@@ -41,6 +45,69 @@ ACTION_BOUNDARY='For requested consequential actions, emit exact structured acti
 
 class Collaboration:
  def __init__(self,service):self.s=service
+ def compile_proposals(self,req,actions):
+  """One bounded structured handoff, including previously saved text-only findings.
+
+  Text is input to a schema-constrained proposal, never an executable command.
+  The existing approval seal and MCP executor remain the only write boundary.
+  """
+  findings=self.shared(req.id);impacts=self.impacts(req.id)
+  if not findings or not any(json.loads(f['properties'].get('proposals','[]')) for f in findings):return []
+  if any(a['message_id']==req.id for a in actions.list()):return []
+  if not impacts or any(i['state']!='ACT' or i['truncated'] for i in impacts):return []
+  journal=stable(req.id+':action-plan:v2')
+  rows=self.s.repo.db.execute('MATCH (p:OrbitActionPlan {id:$id}) RETURN p.errors',{'id':journal},read=True)
+  if rows:return json.loads(rows[0][0])
+  graph=memory.prompt_graph(memory.retrieve(self.s,req.content,req.conversation_id))
+  # Ranked conversational recall can omit the very candidate selected by the
+  # deterministic decision. Fetch those bounded graph references explicitly.
+  relevant={i['trigger_id'] for i in impacts}
+  relevant.update(a['entity_id'] for i in impacts for a in i.get('alternatives',[]))
+  relevant.update(id for i in impacts for p in i['affected'] for id in p['node_ids'])
+  present={n['id'] for n in graph['nodes']}
+  if len(relevant)>100:return ['Decision context exceeds the bounded action handoff.']
+  graph['nodes'].extend(self.s.require(id) for id in sorted(relevant-present))
+  allowed={n['id'] for n in graph['nodes']}|{f['id'] for f in findings}|{req.id}
+  kinds=set().union(*(ACTION_ROLES[f['properties']['owner']] for f in findings))
+  new_task_ids=[stable(req.id+':proposed-task:'+str(i)) for i in range(4)]
+  errors=[]
+  try:
+   output=validated(ActionPlan,llm.generate(
+    'Convert saved specialist proposals into exact approval drafts, not execution. '+BOUNDARY+' '+ACTION_BOUNDARY+
+    ' Use supported operations only. For internal task requests use task_update/task_create, never external writes. '
+    'Use actual task IDs and recorded times, relationships and verified availability. Preserve unrelated work. '
+    'A requested responsibility that has no existing Task can be proposed as task_create with a supplied new_task_id, '
+    'a descriptive name, recorded event interval and confirmed assignee_id. This creates an internal responsibility for approval; it does not reassign or update the Event itself. '
+    'Do not require a calendar etag for an internal task. Report unsupported recommendations separately without dropping supported task drafts. '
+    'Do not change an Event with task_update. Do not invent recipients, provider IDs, times or etags. '
+    'Skip already satisfied changes and prior verified outcomes. Return missing_details for unsupported or ambiguous recommendations. '
+    'Every action must cite a supplied ACT decision and include its trigger in affected_ids. Evidence IDs must be Source, Claim, Message, Decision, Action or Outcome.',
+    {'proposal_compilation':True,'request':req.content,'request_id':req.id,'graph':graph,
+     'new_task_ids':new_task_ids,
+     'deterministic_impacts':impacts,'shared_findings':findings,
+     'action_contracts':{k:PAYLOADS[k].model_json_schema() for k in sorted(kinds)}},ActionPlan.model_json_schema()))
+   errors.extend(output.missing_details)
+   if not output.actions and not errors:errors.append('No exact supported action was produced; additional target/change details are required.')
+   decisions={i['id']:i for i in impacts}
+   for draft in output.actions:
+    try:
+     impact=decisions.get(draft.decision_id)
+     if draft.kind not in kinds or not impact or not set(draft.affected_ids)<=allowed or not set(draft.evidence_ids)<=allowed|set(decisions):
+      raise GraphError(422,'action_evidence','Structured proposal is outside retrieved evidence or specialist capabilities.')
+     if draft.kind.startswith('task'):
+      if draft.payload.get('assignee_id') and draft.payload['assignee_id'] not in allowed:
+       raise GraphError(422,'action_evidence','Task assignee was not retrieved from the graph.')
+      if draft.kind=='task_create' and draft.payload['task_id'] not in new_task_ids:
+       raise GraphError(422,'action_target','New task must use a supplied stable target ID.')
+     linked={impact['trigger_id']}|{id for path in impact['affected'] for id in path['node_ids']}
+     if not set(draft.affected_ids)<=linked|{a['entity_id'] for a in impact.get('alternatives',[])}:
+      raise GraphError(422,'action_evidence','Structured target is not connected to the graph decision.')
+     actions.propose(draft,req.id)
+    except GraphError as error:errors.append(error.message)
+  except GraphError as error:errors.append(error.message)
+  self.s.repo.db.execute('MERGE (p:OrbitActionPlan {id:$id}) SET p.errors=$errors,p.retrieved_ids=$ids,p.created_at=timestamp(),p.message_id=$message,p.conversation_id=$conversation',
+   {'id':journal,'errors':json.dumps(errors),'ids':json.dumps(sorted(allowed)), 'message':req.id,'conversation':req.conversation_id})
+  return errors
  def activity(self,message_id):
   rows=self.s.repo.db.execute("MATCH (n:Task) WHERE n.record_kind='AGENT_RUN' AND n.message_id=$id RETURN properties(n) ORDER BY n.sequence",{'id':message_id},read=True)
   return [node_view(r[0]) for r in rows]
@@ -125,4 +192,5 @@ class Collaboration:
    except GraphError as error:
     self.s.repo.db.execute("MATCH (r:Task {id:$id}) SET r.status='FAILED',r.completed_at=timestamp(),r.error=$error",{'id':run_id,'error':error.message})
    previous=run_id
+  proposal_errors.extend(self.compile_proposals(req,actions))
   return {'activity':self.activity(req.id),'findings':self.shared(req.id),'impacts':self.impacts(req.id),'external_evidence':external,'tool_traces':traces,'actions':[a for a in actions.list() if a['message_id']==req.id],'proposal_errors':proposal_errors}
