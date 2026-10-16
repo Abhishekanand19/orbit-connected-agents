@@ -60,4 +60,4 @@ class ChatEngine:
             {'bot_instructions':req.instructions,'specialist_role':ROLES.get(req.bot_id,''),'collaboration':collaboration,'recent_messages':recent,'graph_memory':context,'latest_message':req.content})
         if len(reply)>20000:raise GraphError(502,'llm_too_long','The model response was too long. Retry with a shorter request.')
         answer=s.create_message(req.conversation_id,MessageCreate(id=answer_id,role='assistant',content=reply))
-        return {'user':user,'assistant':answer,'memory_updated':bool(plan.facts),'activity':collaboration['activity'],'impacts':collaboration.get('impacts',[])}
+        return {'user':user,'assistant':answer,'memory_updated':bool(plan.facts),'activity':collaboration['activity'],'impacts':collaboration.get('impacts',[]),'actions':collaboration.get('actions',[])}
