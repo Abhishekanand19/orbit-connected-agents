@@ -37,6 +37,8 @@ def create_app(settings: Settings | None = None):
         try:
             try:
                 await run_in_threadpool(db.initialize)
+                from .actions import Actions
+                await run_in_threadpool(Actions(app.state.service).recover)
             except GraphError:
                 logging.getLogger(__name__).warning('FalkorDB unavailable at startup; API will return 503 until recovery.')
             yield
@@ -48,8 +50,10 @@ def create_app(settings: Settings | None = None):
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
     from .integration_auth import mount_auth
     mount_auth(app)
+    from .action_api import mount_actions
+    mount_actions(app,settings)
     app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
-        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type'])
+        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI'],allow_credentials=True)
 
     @app.middleware('http')
     async def local_browser_guard(request: Request, call_next):
@@ -234,7 +238,7 @@ def create_app(settings: Settings | None = None):
             google='secure_storage_unavailable'
         return {'google':google,'google_configured':bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET')),
                 'google_redirect_uri':REDIRECT,'slack_configured':bool(os.getenv('SLACK_BOT_TOKEN')),
-                'read_only':True,'owner':'local-owner','live_verified':False}
+                'read_only':False,'writes_require_approval':True,'owner':'local-owner','live_verified':False}
 
     return app
 
