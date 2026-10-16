@@ -5,3 +5,6 @@ falkordb==1.8.0
 python-dotenv>=1.0,<2
 pytest>=8,<10
 httpx>=0.28,<1
+mcp==1.30.0
+keyring>=25,<26
+tzdata>=2025.2; sys_platform == 'win32'
