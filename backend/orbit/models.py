@@ -82,6 +82,7 @@ class NodeUpsert(StrictModel):
         return self
 
 class EdgeProperties(StrictModel):
+    required_location: Name | None = None
     evidence_id: Id | None = None
     evidence_state: EvidenceState = EvidenceState.UNVERIFIED
     note: Annotated[str, Field(max_length=2000)] | None = None
