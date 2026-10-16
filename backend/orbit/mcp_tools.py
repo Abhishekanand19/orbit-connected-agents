@@ -15,7 +15,7 @@ Channel = Annotated[str, Field(pattern=r'^C[A-Z0-9]{5,30}$')]
 Limit = Annotated[int, Field(ge=1, le=15)]
 
 
-def build_server(service, providers=None):
+def build_server(service, providers=None, executor=None):
     provider = providers or Providers()
     server = FastMCP('ORBIT read-only integrations', log_level='ERROR')
     annotation = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
@@ -74,9 +74,25 @@ def build_server(service, providers=None):
         """Read actual FalkorDB dependency paths around an existing entity, bounded to three hops."""
         return await read(service.dependencies, entity_id, 3, 'both', 30)
 
+    if executor is not None:
+        from .action_models import TOOLS
+        write_annotation=ToolAnnotations(readOnlyHint=False,destructiveHint=True,idempotentHint=True,openWorldHint=True)
+        def action_function(tool):
+            async def execute(action_id: Short, approval_digest: Short) -> dict:
+                return await read(executor.execute_tool,tool,action_id,approval_digest)
+            return execute
+        for tool in TOOLS.values():
+            server.add_tool(action_function(tool),name=tool,
+                description='Execute only the exact persisted, user-approved action. Unapproved, changed and duplicate actions cannot execute.',annotations=write_annotation)
+
+        @server.tool(annotations=annotation)
+        async def action_verify(action_id: Short, approval_digest: Short) -> dict:
+            """Read back an uncertain action without replaying any external write."""
+            return await read(executor.verify_tool,action_id,approval_digest)
+
     return server
 
 
-def session(server):
+def session(server, timeout=50):
     # Real initialize, tools/list and tools/call messages; no HTTP endpoint is exposed.
-    return create_connected_server_and_client_session(server, read_timeout_seconds=timedelta(seconds=50))
+    return create_connected_server_and_client_session(server, read_timeout_seconds=timedelta(seconds=timeout))
