@@ -15,6 +15,7 @@ class EntityType(str, Enum):
     Claim='Claim'; Decision='Decision'; Action='Action'; Outcome='Outcome'
 
 class RelationType(str, Enum):
+    AVAILABLE_FOR='AVAILABLE_FOR'
     ASSIGNED_TO='ASSIGNED_TO'; DEPENDS_ON='DEPENDS_ON'; RELATED_TO='RELATED_TO'
     PARTICIPATES_IN='PARTICIPATES_IN'; AFFECTS='AFFECTS'; MENTIONED_IN='MENTIONED_IN'
     SUPPORTED_BY='SUPPORTED_BY'; MOTIVATED_BY='MOTIVATED_BY'; MUTATED='MUTATED'
@@ -39,6 +40,8 @@ class EventProperties(CommonProperties):
     location: Name | None = None
 
 class TaskProperties(CommonProperties):
+    starts_at: AwareDatetime | None = None
+    ends_at: AwareDatetime | None = None
     due_at: AwareDatetime | None = None
     status: Literal['OPEN','IN_PROGRESS','DONE','CANCELLED'] | None = None
 
@@ -79,6 +82,7 @@ class NodeUpsert(StrictModel):
         return self
 
 class EdgeProperties(StrictModel):
+    evidence_id: Id | None = None
     evidence_state: EvidenceState = EvidenceState.UNVERIFIED
     note: Annotated[str, Field(max_length=2000)] | None = None
 
@@ -108,6 +112,7 @@ class ClaimCreate(StrictModel):
     subject_ids: list[Id] = Field(min_length=1, max_length=50)
     observed_at: AwareDatetime
     supersedes_id: Id | None = None
+    verification_source_id: Id | None = None
 
     @model_validator(mode='after')
     def validate_claim(self):
