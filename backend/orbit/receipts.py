@@ -121,6 +121,11 @@ class Receipts:
             for item in prior:
                 if item['id'] in retrieved:
                     item['retrieval'] = {'run_id': run['id'], 'at': run.get('retrieved_at'), 'conversation_id': run.get('conversation_id')}
+        plans = self.db.execute('MATCH (p:OrbitActionPlan {message_id:$message}) RETURN properties(p)', {'message': message_id}, read=True)
+        for (plan,) in plans:
+            for item in prior:
+                if item['id'] in json.loads(plan.get('retrieved_ids', '[]')):
+                    item['retrieval'] = {'run_id': plan['id'], 'at': plan['created_at'], 'conversation_id': plan['conversation_id']}
         trigger_id = analysis.get('trigger_claim_id') or message_id
         trigger = by_id.get(trigger_id)
         if not trigger and trigger_id:
