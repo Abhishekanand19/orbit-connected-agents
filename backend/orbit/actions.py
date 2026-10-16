@@ -50,16 +50,25 @@ class Actions:
 
     def context(self,spec):
         nodes={};edges={}
-        for id in spec['affected_ids']:
-            rows=self.db.execute("""MATCH p=(:Entity {id:$id})-[:DEPENDS_ON|AFFECTS|ASSIGNED_TO|AVAILABLE_FOR|RELATED_TO|SUPPORTED_BY|VERIFIED_BY*0..4]-(:Entity)
-                WHERE all(n IN nodes(p) WHERE n.entity_type IN $types AND NOT coalesce(n.record_kind,'') IN ['AGENT_RUN','MCP_INVOCATION'])
-                RETURN [n IN nodes(p)|properties(n)],[r IN relationships(p)|properties(r)] LIMIT 101""",{'id':id,'types':sorted(DOMAIN)},read=True)
-            if len(rows)>100:raise GraphError(409,'context_truncated','Graph context is truncated; narrow the proposal before approval.')
-            for ns,es in rows:
-                for props in ns:
-                    n=node_view(props);nodes[n['id']]={'type':n['type'],'properties':n['properties']}
-                for props in es:
-                    e=edge_view(props);edges[e['id']]=e
+        frontier=set(spec['affected_ids'])
+        for id in frontier:
+            n=self.s.require(id);nodes[id]={'type':n['type'],'properties':n['properties']}
+        # Bound unique evidence, not the combinatorial number of paths through it.
+        for depth in range(4):
+            if not frontier:break
+            rows=self.db.execute("""MATCH (a:Entity)-[r:DEPENDS_ON|AFFECTS|ASSIGNED_TO|AVAILABLE_FOR|RELATED_TO|SUPPORTED_BY|VERIFIED_BY]-(b:Entity)
+                WHERE a.id IN $ids AND a.entity_type IN $types AND b.entity_type IN $types
+                AND NOT coalesce(a.record_kind,'') IN ['AGENT_RUN','MCP_INVOCATION']
+                AND NOT coalesce(b.record_kind,'') IN ['AGENT_RUN','MCP_INVOCATION']
+                RETURN DISTINCT properties(r),properties(b) LIMIT 301""",{'ids':sorted(frontier),'types':sorted(DOMAIN)},read=True)
+            if len(rows)>300:raise GraphError(409,'context_truncated','Graph context is truncated; narrow the proposal before approval.')
+            next_frontier=set()
+            for props,other in rows:
+                e=edge_view(props);edges[e['id']]=e;n=node_view(other)
+                if n['id'] not in nodes:next_frontier.add(n['id'])
+                nodes[n['id']]={'type':n['type'],'properties':n['properties']}
+            if len(nodes)>100 or len(edges)>300:raise GraphError(409,'context_truncated','Graph context is truncated; narrow the proposal before approval.')
+            frontier=next_frontier
         for id in spec['evidence_ids']:
             n=self.s.require(id);nodes[id]={'type':n['type'],'properties':n['properties']}
         return fingerprint({'nodes':nodes,'edges':{id:{k:e[k] for k in ('type','source','target','properties')} for id,e in edges.items() if e['source'] in nodes and e['target'] in nodes}})
@@ -85,7 +94,7 @@ class Actions:
         if message['properties']['role']!='user':raise GraphError(422,'user_request_required','Actions require a user request.')
         spec=draft.model_dump(mode='json');self.check_constraints(spec)
         for id in spec['affected_ids']:self.s.require(id,{E.Person,E.Event,E.Booking,E.Task})
-        for id in spec['evidence_ids']:self.s.require(id,{E.Source,E.Claim,E.Message,E.Decision})
+        for id in spec['evidence_ids']:self.s.require(id,{E.Source,E.Claim,E.Message,E.Decision,E.Action,E.Outcome})
         if spec['kind'].startswith('task'):
             p=spec['payload']
             if p.get('assignee_id'):self.s.require(p['assignee_id'],{E.Person,E.Bot})
@@ -93,6 +102,10 @@ class Actions:
             except GraphError as exc:
                 if exc.status!=404 or spec['kind']!='task_create':raise
                 task=None
+            merged={**(task['properties'] if task else {}),**p['changes']}
+            if merged.get('starts_at') and merged.get('ends_at'):
+                if datetime.fromisoformat(merged['ends_at'].replace('Z','+00:00'))<=datetime.fromisoformat(merged['starts_at'].replace('Z','+00:00')):
+                    raise GraphError(422,'invalid_task_interval','The proposed task must end after it starts.')
             if task and task['properties'].get('record_kind'):raise GraphError(422,'internal_task','Internal journals cannot be modified as user tasks.')
             if spec['kind']=='task_update' and p['task_id'] not in spec['affected_ids']:raise GraphError(422,'unrelated_task','The changed task must appear in affected entities.')
         canonical='action:'+fingerprint({'tool':TOOLS[spec['kind']],'payload':spec['payload'],'affected':sorted(spec['affected_ids'])})[:48]
