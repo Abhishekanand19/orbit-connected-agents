@@ -59,6 +59,7 @@ class ImpactResult(StrictModel):
  state:Literal['ACT','WAIT','CONFLICT','NO_CHANGE']
  reason:str
  affected:list[ImpactPath]
+ unnecessary_ids:list[str]=Field(default_factory=list)
  unchanged_ids:list[str]
  alternatives:list[Alternative]
  constraints:list[str]
@@ -134,6 +135,20 @@ class ImpactEngine:
     e=edge_view(rel);state=self.edge_state(e);evidence[e['id']]=state
     if state in ('PENDING','UNVERIFIED','CONFIRMED'):uncertain_prerequisite=True
     if state=='VERIFIED' and props.get('status')=='CANCELLED':constraints.append(props['id'])
+  # A conditional dependency is obsolete only when verified current facts no longer
+  # satisfy its declared requirement. This is domain-neutral, not a demo branch.
+  unnecessary=[]
+  for path in affected:
+   target=self.s.require(path.entity_id)
+   if target['type']!='Task' or target['properties'].get('status') in ('DONE','CANCELLED'):continue
+   for edge_id in path.edge_ids:
+    rel=self.s.repo.get_edge(edge_id)
+    required=rel['properties'].get('required_location')
+    if rel['type']=='DEPENDS_ON' and rel['target']==req.root_id and rel['source']==path.entity_id and required and self.edge_state(rel)=='VERIFIED':
+     prerequisite=self.s.require(rel['target'])
+     actual=prerequisite['properties'].get('location')
+     if actual and actual!=required and trigger=='VERIFIED' and path.evidence_status=='VERIFIED':
+      unnecessary.append(path.entity_id);break
   start=req.starts_at;end=req.ends_at
   if not start:
    try:start=datetime.fromisoformat(root['properties']['starts_at'].replace('Z','+00:00'));end=datetime.fromisoformat(root['properties']['ends_at'].replace('Z','+00:00'))
@@ -154,6 +169,7 @@ class ImpactEngine:
   elif trigger!='VERIFIED' or truncated:state='WAIT';reason='Verified current trigger and complete bounded context are required.'
   elif constraints:state='CONFLICT';reason='A verified prerequisite is cancelled.'
   elif uncertain_prerequisite:state='WAIT';reason='Prerequisite evidence is not verified.'
+  elif unnecessary:state='ACT';reason='Verified current context no longer satisfies a conditional dependency; review only the active dependent tasks.'
   elif any(a.state=='NO_CHANGE' for a in alternatives):state='NO_CHANGE';reason='An existing assignment remains feasible in stored constraints.'
   elif any(p.evidence_status!='VERIFIED' for p in affected):state='WAIT';reason='Dependency evidence requires verification.'
   elif any(a.state=='ACT' for a in alternatives):state='ACT';reason='A verified graph-linked alternative is feasible; proposal only.'
@@ -172,9 +188,10 @@ class ImpactEngine:
      if alternative.state=='ACT':
       alternative.state='WAIT';alternative.reason='External calendar constraints require verification.'
   changes=[f'Propose assigning {req.root_id} to {a.entity_id}; no external action executed.' for a in alternatives if a.state=='ACT'] if state=='ACT' else []
+  if state=='ACT':changes.extend(f'Propose cancelling internal task {id}; its verified dependency condition no longer holds. No action executed.' for id in unnecessary)
   evidence.update(self.constraint_edges)
   considered=seen|{a.entity_id for a in alternatives}|{id for a in alternatives for id in a.constraint_ids}|set(constraints)
-  result=ImpactResult(id='impact:'+str(uuid4()),trigger_id=req.root_id,trigger_claim_id=req.trigger_claim_id,state=state,reason=reason,affected=affected,unchanged_ids=[id for id in req.scope_ids if id not in considered],alternatives=alternatives,constraints=constraints,constraint_edge_ids=list(self.constraint_edges),proposed_changes=changes,evidence=evidence,truncated=truncated)
+  result=ImpactResult(id='impact:'+str(uuid4()),trigger_id=req.root_id,trigger_claim_id=req.trigger_claim_id,state=state,reason=reason,affected=affected,unnecessary_ids=unnecessary,unchanged_ids=[id for id in req.scope_ids if id not in considered],alternatives=alternatives,constraints=constraints,constraint_edge_ids=list(self.constraint_edges),proposed_changes=changes,evidence=evidence,truncated=truncated)
   refs={req.root_id:E(root['type']),req.trigger_claim_id:E.Claim};links=[(result.id,R.RELATED_TO,req.root_id),(result.id,R.SUPPORTED_BY,req.trigger_claim_id)]
   for observation in external_observations or []:
    refs[observation['id']]=E.Source;links.append((result.id,R.SUPPORTED_BY,observation['id']))
