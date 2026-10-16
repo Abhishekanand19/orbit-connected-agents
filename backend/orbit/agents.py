@@ -98,6 +98,7 @@ class Collaboration:
    if previous:self.s.repo.upsert_edge(run_id,R.DEPENDS_ON,previous,{'note':'Shared findings handoff; not an external commitment'})
    try:
     graph=memory.prompt_graph(memory.retrieve(self.s,assignment.task+' '+req.content,req.conversation_id))
+    self.s.repo.db.execute('MATCH (r:Task {id:$id}) SET r.retrieved_ids=$ids,r.retrieved_at=timestamp()',{'id':run_id,'ids':json.dumps([n['id'] for n in graph['nodes']])})
     shared=self.shared(req.id)
     output=validated(Finding,llm.generate(ROLES[assignment.agent]+' '+BOUNDARY+' '+ACTION_BOUNDARY,{'task':assignment.task,'request':req.content,'request_id':req.id,'capabilities':CAPABILITIES,'external_tools':EXTERNAL_TOOLS,'graph':graph,'deterministic_impacts':self.impacts(req.id),'shared_findings':shared,'external_evidence':external,'tool_traces':traces,'action_contracts':{k:PAYLOADS[k].model_json_schema() for k in ACTION_ROLES[assignment.agent]}},Finding.model_json_schema()))
     allowed={n['id'] for n in graph['nodes']}|{n['id'] for n in shared}|{n['id'] for n in external}|{req.id}
@@ -106,6 +107,8 @@ class Collaboration:
     self.s.repo.upsert_node(finding_id,E.Source,{'name':assignment.agent+' finding','kind':'SYSTEM','record_kind':'AGENT_FINDING','description':output.summary,'evidence_state':'UNVERIFIED','owner':assignment.agent,'message_id':req.id,'conversation_id':req.conversation_id,'proposals':json.dumps(output.proposals),'draft':output.draft or ''})
     self.s.repo.upsert_edge(run_id,R.PRODUCED,finding_id,{})
     for id in output.evidence_ids:self.s.repo.upsert_edge(finding_id,R.SUPPORTED_BY,id,{})
+    from .receipts import evidence_snapshot
+    self.s.repo.db.execute('MATCH (f:Source {id:$id}) SET f.evidence_snapshot=$snapshot',{'id':finding_id,'snapshot':json.dumps(evidence_snapshot(self.s,output.evidence_ids))})
     for draft in output.actions:
      try:
       if draft.kind not in ACTION_ROLES[assignment.agent] or not set(draft.evidence_ids+draft.affected_ids)<=allowed:
