@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from .config import Settings
 from .database import Database, GraphError
-from .models import (Id, NodeUpsert, RelationshipUpsert, ConversationCreate, MessageCreate,
+from .models import (Id, EntityType, NodeUpsert, RelationshipUpsert, ConversationCreate, MessageCreate,
     ClaimCreate, TraversalRequest, NodeView, EdgeView, Subgraph, HealthView, StrictModel)
 from .repository import GraphRepository
 from .service import GraphService
@@ -71,6 +71,12 @@ def create_app(settings: Settings | None = None):
     def health(s: Service):
         s.repo.db.execute('RETURN 1',read=True)
         return {'status':'ok','database':'FalkorDB','graph':settings.graph}
+
+    @app.get('/api/nodes',response_model=MessagePage)
+    def search_nodes(s: Service, q: Annotated[str,Query(max_length=200)]='',
+                     type: EntityType | None=None, limit: Limit=30,
+                     offset: Annotated[int,Query(ge=0,le=100000)]=0):
+        return s.repo.search_nodes(q.strip(),type,offset,limit)
 
     @app.put('/api/nodes/{node_id}',response_model=NodeView)
     def upsert_node(node_id: Id, body: NodeUpsert, s: Service):
