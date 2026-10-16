@@ -44,6 +44,10 @@ def create_app(settings: Settings | None = None):
             db.close()
 
     app = FastAPI(title='ORBIT — FalkorDB Foundation',version='0.1.0',lifespan=lifespan)
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
+    from .integration_auth import mount_auth
+    mount_auth(app)
     app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
         allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type'])
 
@@ -183,6 +187,54 @@ def create_app(settings: Settings | None = None):
         from .memory import retrieve
         s.require(conversation_id,{EntityType.Conversation})
         return retrieve(s,q,conversation_id)
+
+    @app.get('/api/chat/activity/{message_id}')
+    def agent_activity(message_id: Id,s: Service):
+        from .agents import Collaboration
+        return {'activity':Collaboration(s).activity(message_id)}
+
+    from .intelligence import ImpactRequest, ImpactResult, ImpactEngine
+
+    @app.post('/api/graph/impact',response_model=ImpactResult)
+    def impact(body: ImpactRequest,s: Service):
+        return ImpactEngine(s).analyze(body)
+
+    @app.get('/api/graph/impact/{decision_id}',response_model=ImpactResult)
+    def impact_receipt(decision_id: Id,s: Service):
+        node=s.require(decision_id,{EntityType.Decision})
+        if node['properties'].get('record_kind')!='IMPACT_ANALYSIS':
+            raise GraphError(404,'not_impact','This decision is not an impact analysis.')
+        return ImpactResult.model_validate_json(node['properties']['analysis'])
+
+    from .integrations import Binding, bind, ToolRunner
+
+    @app.post('/api/integrations/bindings',response_model=NodeView)
+    def integration_binding(body: Binding,s: Service):
+        return bind(s,body)
+
+    @app.get('/api/integrations/traces/{message_id}')
+    def integration_traces(message_id: Id,s: Service):
+        s.require(message_id,{EntityType.Message})
+        return {'traces':ToolRunner(s).traces(message_id),'evidence':ToolRunner(s).evidence(message_id)}
+
+    @app.get('/api/integrations/tools')
+    async def integration_tools(s: Service):
+        from .mcp_tools import session
+        async with session(ToolRunner(s).server) as client:
+            return (await client.list_tools()).model_dump(mode='json')
+
+    @app.get('/api/integrations/status')
+    def integration_status():
+        import os
+        from .integration_auth import google_auth, REDIRECT
+        try:
+            saved=google_auth.vault.load()
+            google='connected' if saved and not saved.get('reconnect_required') else 'reconnect_required'
+        except GraphError:
+            google='secure_storage_unavailable'
+        return {'google':google,'google_configured':bool(os.getenv('GOOGLE_CLIENT_ID') and os.getenv('GOOGLE_CLIENT_SECRET')),
+                'google_redirect_uri':REDIRECT,'slack_configured':bool(os.getenv('SLACK_BOT_TOKEN')),
+                'read_only':True,'owner':'local-owner','live_verified':False}
 
     return app
 
