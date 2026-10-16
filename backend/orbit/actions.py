@@ -117,6 +117,8 @@ class Actions:
             refs[id]=E(self.s.require(id)['type']);links.append((identity,R.RELATED_TO if id in spec['affected_ids'] else R.SUPPORTED_BY,id))
         if spec.get('decision_id'):
             refs[spec['decision_id']]=E.Decision;links.append((identity,R.MOTIVATED_BY,spec['decision_id']))
+        from .receipts import evidence_snapshot
+        props['evidence_snapshot']=json.dumps(evidence_snapshot(self.s,list(refs)))
         self.s.repo.atomic_record(identity,E.Action,props,fingerprint(props),refs,links)
         return self.view(self.get(identity))
 
