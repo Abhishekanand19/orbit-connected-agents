@@ -152,6 +152,26 @@ def create_app(settings: Settings | None = None):
     @app.get('/api/evidence/{node_id}',response_model=Subgraph)
     def evidence(node_id: Id,s: Service,limit: Limit=100):
         return s.evidence(node_id,limit)
+    from .chat import ChatRequest, ChatEngine
+
+    @app.post('/api/chat')
+    def chat(body: ChatRequest, s: Service):
+        return ChatEngine(s).turn(body)
+
+    @app.get('/api/chat/bots/{bot_id}/latest')
+    def latest_chat(bot_id: Id, s: Service):
+        rows = s.repo.db.execute('MATCH (:Bot {id:$id})-[:HAS_CONVERSATION]->(c:Conversation) RETURN properties(c) ORDER BY c.created_at DESC, c.id DESC LIMIT 1', {'id':'chatbot:'+bot_id}, read=True)
+        if not rows:
+            return {'conversation_id':None,'messages':[]}
+        conversation=rows[0][0]['id']
+        messages=[]; offset=0
+        while True:
+            page=s.repo.messages(conversation,offset,500)
+            messages.extend(page['items'])
+            if page['next_offset'] is None:break
+            offset=page['next_offset']
+        return {'conversation_id':conversation,'messages':messages}
+
     return app
 
 app = create_app()
