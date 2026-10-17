@@ -1,3 +1,4 @@
+from .story_api import request_service
 """Read-only receipts from durable graph records; no model-generated reasoning."""
 import json
 from fastapi import Request
@@ -149,8 +150,8 @@ class Receipts:
 def mount_receipts(app):
     @app.get('/api/receipts')
     def list_receipts(request: Request):
-        return {'receipts': Receipts(request.app.state.service).list()}
+        return {'receipts': Receipts(request_service(request)).list()}
 
     @app.get('/api/receipts/{record_id}')
     def receipt(record_id: str, request: Request):
-        return Receipts(request.app.state.service).get(record_id)
+        return Receipts(request_service(request)).get(record_id)
