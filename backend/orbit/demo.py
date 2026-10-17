@@ -1,3 +1,4 @@
+from .story_api import request_service
 """Isolated simulated inputs. Decisions and actions come from existing engines.
 Run: python -m backend.orbit.demo --reset --serve
 Uses orbit_demo_family only, backend port 8001; stop the existing backend first.
@@ -90,12 +91,12 @@ class Demo:
 def mount_demo(app):
  @app.get('/api/demo')
  def state(request:Request):
-  if request.app.state.service.repo.db.settings.graph!=GRAPH and not request.app.state.service.repo.db.settings.graph.startswith('orbit_test_demo_'):return {'enabled':False}
-  return Demo(request.app.state.service).state()
+  if request_service(request).repo.db.settings.graph!=GRAPH and not request_service(request).repo.db.settings.graph.startswith('orbit_test_demo_'):return {'enabled':False}
+  return Demo(request_service(request)).state()
  @app.post('/api/demo/{event}')
- def inject(event:str,request:Request):return Demo(request.app.state.service).inject(event)
+ def inject(event:str,request:Request):return Demo(request_service(request)).inject(event)
  @app.post('/api/demo/{event}/analyze')
- def analyze(event:str,request:Request):return Demo(request.app.state.service).analyze(event)
+ def analyze(event:str,request:Request):return Demo(request_service(request)).analyze(event)
 
 
 def reset_demo(db):
