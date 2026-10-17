@@ -1,3 +1,4 @@
+from .story_api import request_service
 """Local-owner browser sessions and explicit approval endpoints; no agent approval API."""
 import hashlib
 import secrets
@@ -8,7 +9,7 @@ from .action_models import ProposalRequest,ApprovalRequest
 from .database import GraphError
 
 def mount_actions(app,settings):
-    def service(request):return request.app.state.service
+    def service(request):return request_service(request)
 
     def browser(request):
         if request.headers.get('origin') not in settings.allowed_origins or request.headers.get('x-orbit-ui')!='1':
