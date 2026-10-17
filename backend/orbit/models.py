@@ -15,6 +15,7 @@ class EntityType(str, Enum):
     Claim='Claim'; Decision='Decision'; Action='Action'; Outcome='Outcome'
 
 class RelationType(str, Enum):
+    PARENT_OF='PARENT_OF'; SIBLING_OF='SIBLING_OF'
     AVAILABLE_FOR='AVAILABLE_FOR'
     ASSIGNED_TO='ASSIGNED_TO'; DEPENDS_ON='DEPENDS_ON'; RELATED_TO='RELATED_TO'
     PARTICIPATES_IN='PARTICIPATES_IN'; AFFECTS='AFFECTS'; MENTIONED_IN='MENTIONED_IN'
