@@ -23,8 +23,8 @@ test('original workspace eight-stage visual acceptance',async({page},testInfo)=>
   await dialog.getByRole('button',{name:'Close graph workspace'}).click();
  }
  const inputs=["Hey Orbit, I'm Aarav. My dad is Ramesh and Priya is my sister.","Dad has a follow-up at 11 tomorrow. Mom Meera is taking him, and the cab arrives at 9:45.","Mom is busy after 12:30, Priya is free from noon, my deployment is at 2:30, and Dad has physio at 4.","Someone forwarded a message saying the hospital is closed because of a protest. Should I cancel the cab?","The hospital emailed me that Dad's appointment moved from 11 to 1:45. What does that affect?","Priya confirmed she can take Dad. Can you organize everything and tell everyone?","Hey Orbit, remember Dad's appointment? The hospital says he can do it over video now. Do we still need the cab?","Perfect, where do things stand now?"];
- await say(inputs[0]);await views(1);await say(inputs[1]);await say(inputs[2]);await views(3);await say(inputs[3]);await expect(page.getByRole('log')).toContainText('Research Assistant');await say(inputs[4]);await views(5);
- const sixth=await say(inputs[5]);expect(sixth.handoffs.map(h=>h.agent)).toEqual(['planner','tasks','communication']);await page.getByRole('button',{name:'Approve exact action',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('inline-approval.png')});
+ await say(inputs[0]);await views(1);await say(inputs[1]);await views(2);await say(inputs[2]);await views(3);await say(inputs[3]);await views(4);await expect(page.getByRole('log')).toContainText('Research Assistant');await say(inputs[4]);await views(5);
+ const sixth=await say(inputs[5]);await views(6);expect(sixth.handoffs.map(h=>h.agent)).toEqual(['planner','tasks','communication']);await page.getByRole('button',{name:'Approve exact action',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('inline-approval.png')});
  await page.getByRole('button',{name:'Why?',exact:true}).last().click();await expect(page.getByRole('dialog',{name:'Why did Orbit do this?'})).toContainText('WAITING');await page.getByRole('button',{name:'Close explanation'}).click();
  const approve=page.getByRole('button',{name:'Approve exact action',exact:true});await expect(approve).toHaveCount(1);await approve.click();await expect(page.getByRole('log')).toContainText('Verified by fresh readback');
  const oldConversation=sixth.user.properties.conversation_id;
@@ -32,7 +32,7 @@ test('original workspace eight-stage visual acceptance',async({page},testInfo)=>
  await expect(page.locator('.message')).toHaveCount(0);await page.screenshot({animations:'disabled',path:testInfo.outputPath('new-chat.png')});
  await page.reload();await expect(page.locator('.message')).toHaveCount(0);
  const seventh=await say(inputs[6]);expect(seventh.previous.length).toBeGreaterThan(0);await expect(page.getByRole('log')).toContainText('1:45 PM');await page.locator('.message.assistant').last().scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('cross-session.png')});await views(7);
- await expect(approve).toHaveCount(1);await approve.click();await expect(page.getByRole('log')).toContainText('Verified by fresh readback');await say(inputs[7]);await expect(page.getByRole('log')).toContainText('removed after approval and verified readback');
+ await expect(approve).toHaveCount(1);await approve.click();await expect(page.getByRole('log')).toContainText('Verified by fresh readback');await say(inputs[7]);await views(8);await expect(page.getByRole('log')).toContainText('removed after approval and verified readback');
  await page.reload();await expect(page.getByRole('log')).toContainText('removed after approval and verified readback');expect(errors).toEqual([]);
  console.log(JSON.stringify({chat_roundtrip_ms:timings,stages:results.map(r=>({intents:r.intents,revision:r.graph_revision}))}));
 });
