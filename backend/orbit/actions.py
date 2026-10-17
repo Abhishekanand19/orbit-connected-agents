@@ -38,7 +38,9 @@ class Actions:
     def view(self,n):
         p=n['properties'];spec=json.loads(p['spec'])
         labels={}
-        for id in spec['affected_ids']:
+        label_ids=list(spec['affected_ids'])
+        if spec['kind'].startswith('task_'):label_ids.extend(spec['payload'][key] for key in ('task_id','assignee_id') if spec['payload'].get(key))
+        for id in dict.fromkeys(label_ids):
             try:labels[id]=self.s.require(id)['properties'].get('name',id)
             except GraphError:labels[id]=id
         return {'id':n['id'],'status':p['status'],'digest':p['digest'],'tool':p['tool'],
