@@ -131,6 +131,7 @@ class ActionProviders(Providers):
             return {'verified':event_matches(data,payload,action_id),'provider_id':id,'readback':{k:data.get(k) for k in ('id','etag','summary','start','end','attendees','extendedProperties')}}
         if kind=='gmail_send':
             id=receipt.get('id')
+            acknowledged_id=bool(id)
             if not id:
                 found=self.get('gmail','messages',{'q':'in:sent rfc822msgid:'+key+'@orbit.local','maxResults':2})
                 if len(found.get('messages',[]))!=1:return {'verified':False,'reason':'No unique sent message found; do not resend.'}
@@ -139,11 +140,20 @@ class ActionProviders(Providers):
             raw=data.get('raw','');message=BytesParser(policy=default).parsebytes(base64.urlsafe_b64decode(raw+'='*(-len(raw)%4)))
             body=message.get_body(preferencelist=('plain',))
             recipients=lambda name:sorted(address.casefold() for _,address in getaddresses(message.get_all(name,[])))
-            verified=('SENT' in data.get('labelIds',[]) and message.get('Message-ID')=='<'+key+'@orbit.local>'
+            sender=self.get('gmail','profile').get('emailAddress','').casefold()
+            # Gmail's immutable API ID identifies the acknowledged submission.
+            # Gmail may replace the supplied RFC Message-ID during processing.
+            # Without an acknowledgement, require the unique search result to
+            # retain our RFC identifier as well as matching the complete payload.
+            identity=(data.get('id')==id and (acknowledged_id or message.get('Message-ID')=='<'+key+'@orbit.local>'))
+            verified=(identity and 'SENT' in data.get('labelIds',[]) and bool(sender) and recipients('from')==[sender]
                 and recipients('to')==sorted(a.casefold() for a in payload['to']) and recipients('cc')==sorted(a.casefold() for a in payload['cc'])
                 and str(message.get('Subject',''))==payload['subject'] and body is not None
                 and body.get_content().replace('\r\n','\n').rstrip('\n')==payload['body'].replace('\r\n','\n').rstrip('\n'))
-            return {'verified':verified,'provider_id':id,'readback':{'id':id,'labels':data.get('labelIds',[]),'message_id':message.get('Message-ID'),'recipients':recipients('to')}}
+            return {'verified':verified,'provider_id':id,'readback':{'id':id,'labels':data.get('labelIds',[]),
+                'rfc_message_id':message.get('Message-ID'),'submitted_rfc_message_id':receipt.get('rfc_message_id') or key+'@orbit.local',
+                'sender':recipients('from'),'recipients':recipients('to'),'subject_matches':str(message.get('Subject',''))==payload['subject'],
+                'verification_scope':'sent_submission_not_inbox_delivery'}}
         if kind=='slack_post':
             params={'channel':payload['channel_id'],'limit':100}
             if receipt.get('ts'):params.update(oldest=receipt['ts'],latest=receipt['ts'],inclusive='true')
