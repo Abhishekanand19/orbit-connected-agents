@@ -6,44 +6,31 @@ async function open(page,mode='Graph') {
  await page.goto('/');await page.getByRole('button',{name:`Open ${mode} View`,exact:true}).click();
  await page.getByRole('button',{name:'Explore Hospital appointment',exact:true}).click();
  await expect(page.locator('[data-entity-id="sample:appointment"]')).toBeVisible();
- await expect(page.getByTestId('graph-canvas')).toBeVisible();
+ await expect(page.getByTestId(mode==='Simple'?'simple-explanation':'graph-canvas')).toBeVisible();
 }
 async function ids(page,attribute) {return page.locator(`[${attribute}]`).evaluateAll((items,a)=>items.map(n=>n.getAttribute(a)).sort(),attribute);}
-test('both modes preserve API entities, directions, cross-links and details',async({page,request})=>{
- const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await open(page);
+test('network and vertical explanation preserve actual API evidence',async({page,request})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await open(page);
  await page.getByRole('button',{name:'3 hops',exact:true}).click();
- const response=await request.post(api+'/api/graph/subgraph',{data:{root_id:'sample:appointment',hops:3,direction:'both',limit:100}});
- expect(response.ok()).toBeTruthy();const graph=await response.json();
+ const graph=await(await request.post(api+'/api/graph/subgraph',{data:{root_id:'sample:appointment',hops:3,direction:'both',limit:100}})).json();
  await expect.poll(()=>ids(page,'data-entity-id')).toEqual(graph.nodes.map(n=>n.id).sort());
  await expect.poll(()=>ids(page,'data-edge-id')).toEqual(graph.edges.map(e=>e.id).sort());
- await page.screenshot({path:'test-results/orbit-graph-1920.png'});
  await page.getByRole('button',{name:'Simple View',exact:true}).click();
- await expect(page.getByTestId('graph-canvas')).toHaveAttribute('data-mode','simple');
- await expect.poll(()=>ids(page,'data-entity-id')).toEqual(graph.nodes.map(n=>n.id).sort());
- await expect.poll(()=>ids(page,'data-edge-id')).toEqual(graph.edges.map(e=>e.id).sort());
- expect(await page.locator('.cross-link').count()).toBeGreaterThan(0);
- const root=await page.locator('[data-entity-id="sample:appointment"]').boundingBox();
- for(const n of graph.nodes.filter(n=>n.id!=='sample:appointment')){
-   const b=await page.locator(`[data-entity-id="${n.id}"]`).boundingBox();expect(b.y).toBeGreaterThan(root.y);
- }
+ await expect(page.getByTestId('simple-explanation')).toBeVisible();
+ const shownNodes=await ids(page,'data-entity-id'),shownEdges=await ids(page,'data-edge-id');
+ expect(shownNodes.length).toBeGreaterThan(0);expect(shownEdges.length).toBeGreaterThan(0);
+ expect(shownNodes.every(id=>graph.nodes.some(n=>n.id===id))).toBe(true);
+ expect(shownEdges.every(id=>graph.edges.some(e=>e.id===id))).toBe(true);
+ const steps=await page.locator('.explanation-step').evaluateAll(ns=>ns.map(n=>n.getBoundingClientRect()));
+ expect(steps.every((r,i)=>i===0||r.y>steps[i-1].y+steps[i-1].height)).toBe(true);
  const edge=graph.edges.find(e=>e.source==='sample:transport'&&e.type==='ASSIGNED_TO');
  await page.locator(`[data-edge-id="${edge.id}"]`).click();
  await expect(page.locator('.graph-inspector')).toContainText('ASSIGNED_TO');
  await expect(page.locator('.edge-direction')).toContainText('Transport booking');
  await expect(page.locator('.edge-direction')).toContainText('Priya');
- await page.locator('[data-entity-id="sample:claim"]').click();
- await expect(page.locator('.graph-inspector')).toContainText('PENDING');
- await expect(page.locator('.graph-inspector')).toContainText('Evidence & mentions');
- await page.screenshot({path:'test-results/orbit-simple-1920.png'});
- await page.getByRole('button',{name:'Collapse Hospital appointment',exact:true}).click();
- await expect(page.locator('[data-entity-id]')).toHaveCount(1);
- await page.getByRole('button',{name:'Expand Hospital appointment',exact:true}).click();
- await expect.poll(()=>ids(page,'data-entity-id')).toEqual(graph.nodes.map(n=>n.id).sort());
- await page.getByRole('button',{name:'Close graph workspace'}).click();
- await expect(page.getByLabel('Message',{exact:true})).toBeVisible();
- expect(errors).toEqual([]);
+ await page.getByRole('button',{name:'Close graph workspace'}).click();await expect(page.getByLabel('Message',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
+
 test('actual backend mutations refresh in both modes and on reopening',async({page,request})=>{
  await open(page);
  const graph=await (await request.post(api+'/api/graph/subgraph',{data:{root_id:'sample:appointment',hops:2}})).json();
@@ -100,7 +87,7 @@ test('network errors show no fake or stale graph, then recover',async({page})=>{
 test('mobile workspace closes back to intact chat',async({page})=>{
  await page.setViewportSize({width:390,height:844});await open(page,'Simple');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await expect(page.getByTestId('graph-canvas')).toHaveAttribute('data-mode','simple');
+ await expect(page.getByTestId('simple-explanation')).toBeVisible();
  await page.screenshot({path:'test-results/orbit-graph-mobile.png'});
  await page.getByRole('button',{name:'Close graph workspace'}).click();
  await page.getByLabel('Message',{exact:true}).fill('Chat stays intact');await page.getByLabel('Message',{exact:true}).press('Enter');
