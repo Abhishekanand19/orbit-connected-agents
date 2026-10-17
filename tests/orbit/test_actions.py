@@ -54,7 +54,17 @@ class ProviderFixture:
         if '/events/' in path:
             return httpx.Response(200,json=self.events.get(path.rsplit('/',1)[1],{}))
         if path.endswith('/messages'):return httpx.Response(200,json={'messages':[{'id':id} for id in self.messages]})
-        if '/messages/' in path:return httpx.Response(200,json=self.messages.get(path.rsplit('/',1)[1],{}))
+        if path.endswith('/profile'):return httpx.Response(200,json={'emailAddress':'fixture@example.test'})
+        if '/messages/' in path:
+            import base64
+            from email.parser import BytesParser
+            from email.policy import default
+            data=dict(self.messages.get(path.rsplit('/',1)[1],{}))
+            if data.get('raw'):
+                raw=data['raw'];message=BytesParser(policy=default).parsebytes(base64.urlsafe_b64decode(raw+'='*(-len(raw)%4)))
+                if not message.get('From'):message['From']='fixture@example.test'
+                data['raw']=base64.urlsafe_b64encode(message.as_bytes()).decode()
+            return httpx.Response(200,json=data)
         if path.endswith('/conversations.history'):
             messages=[m for m in self.slack if m['channel']==req.url.params['channel'] and (not req.url.params.get('oldest') or m['ts']==req.url.params['oldest'])]
             return httpx.Response(200,json={'ok':True,'messages':messages})
