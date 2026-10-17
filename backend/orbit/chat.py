@@ -1,6 +1,7 @@
 """Persistent chat turns with resumable extraction and idempotent message IDs."""
 import json
 import threading
+from typing import Literal
 from datetime import datetime, timezone
 from pydantic import Field
 from .models import StrictModel,Id,Text,NodeUpsert,ConversationCreate,MessageCreate
@@ -17,11 +18,15 @@ class ChatRequest(StrictModel):
     instructions:str=Field(default='',max_length=4000)
     conversation_id:Id
     content:Text
+    source:Literal['typed','voice_transcript']='typed'
     legacy_messages:list[MessageCreate]=Field(default_factory=list,max_length=500)
 
 class ChatEngine:
     def __init__(self,service):self.s=service
     def turn(self,req):
+        if self.s.repo.db.settings.graph.startswith('orbit_story_'):
+            from .story import StoryEngine
+            with _lock:return StoryEngine(self.s).turn(req)
         with _lock:return self._turn(req)
     def _turn(self,req):
         s=self.s;db=s.repo.db
