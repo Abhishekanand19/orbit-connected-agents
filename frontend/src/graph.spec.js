@@ -1,6 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {test,expect} from '@playwright/test';
 const api='http://127.0.0.1:8002';
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('orbit.chat.mode','normal'));});
 async function open(page,mode='Graph') {
  await page.goto('/');await page.getByRole('button',{name:`Open ${mode} View`,exact:true}).click();
  await page.getByRole('button',{name:'Explore Hospital appointment',exact:true}).click();
