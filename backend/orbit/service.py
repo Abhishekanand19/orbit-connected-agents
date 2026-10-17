@@ -7,6 +7,7 @@ from .models import EntityType as E, RelationType as R, TraversalRequest
 PROTECTED = {R.HAS_CONVERSATION,R.HAS_MESSAGE,R.AUTHORED_BY,R.SUPERSEDES}
 WORK = {E.Task,E.Event,E.Booking}
 RULES = {
+    R.PARENT_OF:({E.Person},{E.Person}), R.SIBLING_OF:({E.Person},{E.Person}),
     R.AVAILABLE_FOR:({E.Person,E.Bot},WORK),
     R.ASSIGNED_TO:(WORK,{E.Person,E.Bot}), R.DEPENDS_ON:(WORK,WORK|{E.Person}),
     R.PARTICIPATES_IN:({E.Person,E.Bot},{E.Event,E.Conversation}),
