@@ -27,13 +27,15 @@ export function saveWorkspace(storage, data) {
 // API boundary for a later phase. No generated replies are simulated.
 export const chatService = { connection: 'unconfigured', createMessage(content) { return {id: crypto.randomUUID(), role: 'user', content: content.trim(), createdAt: Date.now()}; } };
 
+export const STORY_KEY='orbit.story.workspace';
+export function storyHeaders(){const id=localStorage.getItem('orbit.chat.mode')==='normal'?null:localStorage.getItem(STORY_KEY);return id?{'X-Orbit-Story':id}:{};}
 const CHAT_API = import.meta.env?.VITE_ORBIT_API_URL || 'http://127.0.0.1:8001';
 export async function chatRequest(path, body) {
- const response=await fetch(CHAT_API+path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(480000)});
+ const response=await fetch(CHAT_API+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json',...storyHeaders()},signal:AbortSignal.timeout(480000)});
  const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Chat request failed. Please retry.');return data;
 }
-export const messageFromApi = n=>({id:n.id,role:n.properties.role,content:n.properties.content,createdAt:n.created_at});
+export const messageFromApi = n=>({id:n.id,role:n.properties.role,content:n.properties.content,createdAt:n.created_at,story:n.properties.story?JSON.parse(n.properties.story):null});
 export async function actionRequest(path,body){
- const response=await fetch(CHAT_API+path,{method:body===undefined?'GET':'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json','X-Orbit-UI':'1'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(130000)});
+ const response=await fetch(CHAT_API+path,{method:body===undefined?'GET':'POST',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json','X-Orbit-UI':'1',...storyHeaders()},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(130000)});
  const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Action request failed. Refresh to check its saved status.');return data;
 }
