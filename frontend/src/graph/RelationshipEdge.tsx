@@ -9,6 +9,10 @@ export function RelationshipEdge(props:EdgeProps<RelationshipFlowEdge>) {
   let [path,x,y]=getBezierPath({...props,curvature:.3});
   if(data.entity.source===data.entity.target) {
     path=`M ${sx} ${sy} C ${sx+130} ${sy-100}, ${tx+130} ${ty+100}, ${tx} ${ty}`;x=sx+100;y=sy;
+  } else if(Math.abs(sy-ty)<2) {
+    const lift=45+(data.slot%3)*22;
+    path=`M ${sx} ${sy} C ${sx} ${sy-lift}, ${tx} ${ty-lift}, ${tx} ${ty}`;
+    x=(sx+tx)/2;y=sy-lift*.75;
   } else if(data.cross) {
     const bend=Math.max(sx,tx)+65+(data.slot%4)*35;
     path=`M ${sx} ${sy} C ${bend} ${sy}, ${bend} ${ty}, ${tx} ${ty}`;
