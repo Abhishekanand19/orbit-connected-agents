@@ -54,10 +54,12 @@ def create_app(settings: Settings | None = None):
     mount_actions(app,settings)
     from .receipts import mount_receipts
     mount_receipts(app)
+    from .story_api import mount_story,request_service
+    mount_story(app,settings)
     from .demo import mount_demo
     mount_demo(app)
     app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
-        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI'],allow_credentials=True)
+        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI','X-Orbit-Story'],allow_credentials=True)
 
     @app.middleware('http')
     async def local_browser_guard(request: Request, call_next):
@@ -76,7 +78,7 @@ def create_app(settings: Settings | None = None):
             'details':[{'location':list(e['loc']),'message':e['msg']} for e in error.errors()]}},status_code=422)
 
     def service(request: Request):
-        return request.app.state.service
+        return request_service(request)
     Service = Annotated[GraphService, Depends(service)]
 
     @app.get('/api/health',response_model=HealthView)
