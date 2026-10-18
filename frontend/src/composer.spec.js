@@ -39,6 +39,73 @@ test('persisted graph grows without remounting nodes or resetting the viewport',
 });
 
 // Controlled event-contract test, NOT evidence of real microphone transcription.
+test('speech automatically submits one finalized utterance to each selected agent and ignores stale callbacks',async({page})=>{
+ await page.addInitScript(()=>{
+  navigator.mediaDevices.getUserMedia=async()=>({getTracks:()=>[{stop(){}}]});
+  window.AudioContext=class{constructor(){throw new Error('Optional waveform unavailable');}};
+  window.SpeechRecognition=class{
+   start(){window.__recognizer=this;queueMicrotask(()=>this.onstart());}
+   stop(){queueMicrotask(()=>this.onend());}
+   abort(){}
+  };
+ });
+ const sent=[];
+ await page.route('**/api/chat',async route=>{
+  const data=route.request().postDataJSON();sent.push(data);
+  await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Controlled offline backend'})});
+ });
+ await page.goto('/');
+ for(const [name,id] of [['Coordinator','coordinator'],['Planner','planner'],['Researcher','research'],['Communication Assistant','communication'],['Task Manager','tasks']]){
+  await page.getByRole('button',{name,exact:true}).click();
+  await page.getByRole('button',{name:'Start microphone'}).click();
+  await expect(page.getByRole('button',{name:'Stop recording'})).toBeEnabled();
+  expect(await page.evaluate(()=>window.__recognizer.continuous)).toBe(false);
+  await page.evaluate(()=>{const r=[{transcript:'Voice submission check'}];r.isFinal=true;const s=window.__recognizer;s.onresult({resultIndex:0,results:[r]});s.onspeechend();s.onend();s.onend();s.onerror({error:'network'});});
+  await expect.poll(()=>sent.filter(s=>s.bot_id===id).length).toBe(1);
+  await expect(page.getByRole('button',{name:'Start microphone'})).toBeEnabled();
+  expect(sent.at(-1).content).toBe('Voice submission check');expect(sent.at(-1).source).toBe('voice_transcript');
+  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Voice submission check');
+ }
+ expect(sent).toHaveLength(5);
+});
+
+test('speech recovery: waveform failure, missing end event and unfinished transcript preserve drafts without sending',async({page})=>{
+ await page.addInitScript(()=>{
+  window.__stops=0;
+  navigator.mediaDevices.getUserMedia=async()=>({getTracks:()=>[{stop(){window.__stops++;}}]});
+  window.AudioContext=class{constructor(){throw new Error('Waveform unavailable');}};
+  window.SpeechRecognition=class{
+   start(){window.__recognizer=this;queueMicrotask(()=>this.onstart());}
+   stop(){} // Reproduce a service that never emits end after stop/error.
+   abort(){}
+  };
+ });
+ let sends=0;page.on('request',r=>{if(r.url().endsWith('/api/chat')&&r.method()==='POST')sends++;});
+ await page.goto('/');
+ const start=async()=>{await page.getByRole('button',{name:'Start microphone'}).click();await expect(page.getByRole('button',{name:'Stop recording'})).toBeEnabled();};
+ const draft=page.getByRole('textbox',{name:'Message',exact:true});
+ await start();
+ await page.evaluate(()=>{const r=[{transcript:'Keep this unfinished thought'}];r.isFinal=false;window.__recognizer.onresult({resultIndex:0,results:[r]});window.__old=window.__recognizer;window.__recognizer.onerror({error:'network'});});
+ await expect(draft).toHaveValue('Keep this unfinished thought');
+ await expect(page.getByRole('alert')).toContainText('Speech service could not connect');
+ await start();
+ await page.evaluate(()=>{window.__old.onend();window.__old.onerror({error:'no-speech'});});
+ await expect(page.getByRole('button',{name:'Stop recording'})).toBeEnabled();
+ await page.getByRole('button',{name:'Cancel recording'}).click();
+ await draft.fill('');await start();
+ await page.evaluate(()=>{const r=[{transcript:'Review before sending'}];r.isFinal=false;window.__recognizer.onresult({resultIndex:0,results:[r]});});
+ await page.getByRole('button',{name:'Send recording'}).click();
+ await page.evaluate(()=>window.__recognizer.onend());
+ await expect(draft).toHaveValue('Review before sending');
+ await expect(page.getByRole('alert')).toContainText('not finalized');
+ await draft.fill('');await start();
+ await page.evaluate(()=>{const r=[{transcript:'Preserve on timeout'}];r.isFinal=false;window.__recognizer.onresult({resultIndex:0,results:[r]});});
+ await page.getByRole('button',{name:'Stop recording'}).click();
+ await expect(draft).toHaveValue('Preserve on timeout',{timeout:8000});
+ await expect(page.getByRole('alert')).toContainText('Nothing was sent');
+ expect(sends).toBe(0);expect(await page.evaluate(()=>window.__stops)).toBeGreaterThanOrEqual(4);
+});
+
 test('controlled speech lifecycle: direct send finalizes once, stop and cancel never send',async({page})=>{
  await page.addInitScript(()=>{
   window.__stops=0;
