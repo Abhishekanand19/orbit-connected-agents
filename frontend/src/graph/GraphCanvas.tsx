@@ -15,7 +15,12 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
   const layout=useMemo(()=>{const next=layoutGraph(graph,root,mode,filter,collapsed,compact,coordinates.current);for(const [id,p] of next.positions)coordinates.current.set(id,p);return next;},[graph,root,mode,filter,collapsed,compact]);
   const [nodes,setNodes,onNodesChange]=useNodesState<EntityFlowNode>([]);
   const [instance,setInstance]=useState<ReactFlowInstance<EntityFlowNode,RelationshipFlowEdge>|null>(null);
-  const highlighted=useMemo(()=>selection?.kind==='node'?connectedPath(layout,root,selection.id):new Set<string>(),[layout,selection,root]);
+  const highlighted=useMemo(()=>{
+    const decisions=graph.nodes.filter(n=>n.type==='Decision'&&n.properties.record_kind==='STORY_DECISION').sort((a,b)=>b.created_at-a.created_at);
+    const decision=decisions.find(n=>n.id===root||n.id===selection?.id)||decisions[0];
+    if(decision){try{const analysis=JSON.parse(String(decision.properties.analysis));return new Set<string>(analysis.affected.flatMap((p:{edge_ids:string[]})=>p.edge_ids));}catch{/* Fall back for older receipts. */}}
+    return selection?.kind==='node'?connectedPath(layout,root,selection.id):new Set<string>();
+  },[graph,layout,selection,root]);
   useEffect(()=>{
     setNodes(layout.nodes.map(n=>({id:n.id,type:'entity',position:layout.positions.get(n.id)!,ariaLabel:`Inspect ${nodeLabel(n)}`,
       data:{entity:n,mode,compact,root:n.id===root,childCount:layout.tree.children.get(n.id)?.length||0,collapsed:collapsed.has(n.id),toggle:()=>toggle(n.id),highlight:false,fresh:previous.current.get(n.id)!==JSON.stringify(n.properties)}})));
