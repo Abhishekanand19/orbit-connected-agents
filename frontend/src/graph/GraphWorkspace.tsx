@@ -8,9 +8,11 @@ import Inspector from './Inspector';
 import {graphService} from './service';
 import {ENTITY_TYPES,TYPE_COLORS,nodeLabel,type GraphData,type GraphNode,type ViewMode,type Selection} from './models';
 import './graph.css';
-interface Props {initialMode:ViewMode;initialRoot:string;rememberRoot:(id:string)=>void;close:()=>void;}
-export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,close}:Props) {
+interface Props {initialMode:ViewMode;initialRoot:string;rememberRoot:(id:string)=>void;close:()=>void;conversationId?:string;docked?:boolean;}
+export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,close,conversationId,docked=false}:Props) {
   const story=localStorage.getItem('orbit.chat.mode')!=='normal'&&!!localStorage.getItem('orbit.story.workspace');
+  const [inspect,setInspect]=useState(false);
+  useEffect(()=>setMode(initialMode),[initialMode]);
   const [scope,setScope]=useState('plan');
   const dialog=useRef<HTMLDialogElement>(null);
   const [mode,setMode]=useState(initialMode),[root,setRoot]=useState(initialRoot),[hops,setHops]=useState(story?4:2);
@@ -22,7 +24,7 @@ export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,clo
   const focus=useCallback((id:string)=>{setRoot(id);rememberRoot(id);setSelection({kind:'node',id});setCollapsed(new Set());},[rememberRoot]);
   const toggle=useCallback((id:string)=>setCollapsed(previous=>{const next=new Set(previous);next.has(id)?next.delete(id):next.add(id);return next;}),[]);
   const refresh=useCallback(()=>{setRevision(v=>v+1);setOffset(0);},[]);
-  useEffect(()=>{const prior=document.activeElement as HTMLElement;dialog.current?.showModal();const invalidate=()=>refresh();window.addEventListener('orbit:graph-changed',invalidate);return()=>{window.removeEventListener('orbit:graph-changed',invalidate);prior?.focus();};},[refresh]);
+  useEffect(()=>{const prior=document.activeElement as HTMLElement;if(!docked)dialog.current?.showModal();const invalidate=()=>refresh();window.addEventListener('orbit:graph-changed',invalidate);return()=>{window.removeEventListener('orbit:graph-changed',invalidate);prior?.focus();};},[refresh]);
   useEffect(()=>{
     const controller=new AbortController();setSearching(true);setSearchError('');if(offset===0)setEntities([]);
     const timer=setTimeout(()=>{
@@ -40,18 +42,19 @@ export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,clo
   useEffect(()=>{
     if(!root&&!story)return;
     const controller=new AbortController();setLoading(true);setError('');setCollapsed(new Set());
-    (story?graphService.story(controller.signal):graphService.subgraph(root,hops,controller.signal)).then(data=>{
+    (story?graphService.story(controller.signal,conversationId):graphService.subgraph(root,hops,controller.signal)).then(data=>{
       if(controller.signal.aborted)return;
       setGraph(data);setLoadedAt(new Date());setSelection({kind:'node',id:root});
     }).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return()=>controller.abort();
-  },[root,hops,revision]);
+  },[root,hops,revision,conversationId]);
   const displayed=graph?(story?withinHops(planProjection(graph,scope),root,hops):graph):null;
   const focusNode=graph?.nodes.find(n=>n.id===root);
-  return <dialog ref={dialog} className="graph-dialog" aria-label="Graph exploration workspace" onCancel={e=>{e.preventDefault();e.stopPropagation();close();}} onKeyDown={e=>{if(e.key==='Escape')e.stopPropagation();}}>
+  const Container=docked?'section':'dialog';
+  return <Container ref={dialog as any} role={docked?'region':'dialog'} className={`graph-dialog ${docked?'docked':''} ${inspect?'inspect-open':''}`} aria-label="Graph exploration workspace" onCancel={e=>{e.preventDefault();e.stopPropagation();close();}} onKeyDown={e=>{if(e.key==='Escape')e.stopPropagation();}}>
     <div className="graph-workspace"><header className="graph-workspace-header"><div className="graph-brand"><Network size={23}/><div><h2>Connected context<span>.</span></h2><p>Your knowledge, a little more connected.</p></div></div>
       <div className="view-switch" role="group" aria-label="Visualization mode"><button aria-pressed={mode==='network'} onClick={()=>setMode('network')}><Network size={16}/> Graph View</button><button aria-pressed={mode==='simple'} onClick={()=>setMode('simple')}><GitFork size={16}/> Simple View</button></div>
-      <button className="graph-refresh" onClick={refresh} aria-label="Refresh graph"><RefreshCw size={15} className={loading?'spinning':''}/> Refresh</button><button className="icon-button" onClick={close} aria-label="Close graph workspace"><X size={21}/></button></header>
+      <button className="graph-refresh" aria-pressed={inspect} onClick={()=>setInspect(v=>!v)}>Inspect</button><button className="graph-refresh" onClick={refresh} aria-label="Refresh graph"><RefreshCw size={15} className={loading?'spinning':''}/> Refresh</button><button className="icon-button" onClick={close} aria-label="Close graph workspace"><X size={21}/></button></header>
     <div className="graph-toolbar"><span className="graph-breadcrumb"><Database size={14}/> FalkorDB <ChevronRight size={13}/><strong title={focusNode?nodeLabel(focusNode):root}>{focusNode?nodeLabel(focusNode):'Choose an entity'}</strong></span><div className="depth-control"><span>Connection depth</span>{[1,2,3,4].map(depth=><button key={depth} aria-label={`${depth} ${depth===1?'hop':'hops'}`} aria-pressed={hops===depth} onClick={()=>setHops(depth)}>{depth}</button>)}</div>{story&&<label className="graph-type-filter">Context <select aria-label="Graph context" value={scope} onChange={e=>setScope(e.target.value)}><option value="plan">Connected Plan</option><option value="people">People</option><option value="evidence">Evidence</option><option value="all">All Records</option></select></label>}<label className="graph-type-filter">Show <select aria-label="Filter entity type" value={filter} onChange={e=>{setFilter(e.target.value);setOffset(0);}}><option value="">All entity types</option>{ENTITY_TYPES.map(t=><option key={t}>{t}</option>)}</select></label></div>
     <div className="graph-workspace-body"><aside className="entity-directory"><div className="directory-title"><span>EXPLORE YOUR GRAPH</span><Search size={14}/></div><div className="entity-search"><Search size={15}/><input autoFocus aria-label="Search graph entities" placeholder="Find an entity or topic…" value={query} onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></div><div className="entity-results" aria-label="Graph entities">
       {searching&&<p className="directory-message" role="status">Finding entities…</p>}{searchError&&<p className="directory-message error" role="alert">{searchError}</p>}
@@ -64,8 +67,8 @@ export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,clo
         {graph?.truncated&&<div className="graph-notice">Showing a bounded selection of paths. Reduce the depth or focus on a closer entity to explore more precisely.</div>}
         {filter&&<div className="graph-notice">Showing {filter} entities. Relationships with hidden endpoints are hidden, never rerouted.</div>}
 
-        {loading&&!graph?<div className="graph-state" role="status"><LoaderCircle className="spinning" size={30}/><h3>Following the connections…</h3><p>Retrieving up to {hops} hops from FalkorDB.</p></div>:error?<div className="graph-state" role="alert"><Unplug size={34}/><h3>Connection interrupted.</h3><p>{error}</p><button className="secondary" onClick={refresh}>Try again</button></div>:displayed?mode==='simple'?<SimpleExplanation graph={filter?{...displayed,nodes:displayed.nodes.filter(n=>n.type===filter),edges:displayed.edges.filter(e=>displayed.nodes.some(n=>n.id===e.source&&n.type===filter)&&displayed.nodes.some(n=>n.id===e.target&&n.type===filter))}:displayed} select={setSelection}/>:<GraphCanvas graph={displayed} root={root} mode={mode} filter={filter} selection={selection} select={setSelection} collapsed={collapsed} toggle={toggle}/>:<div className="graph-state"><Network size={36}/><h3>{searchError?'Connect your graph.':'Start with something you know.'}</h3><p>{searchError||'Choose an entity from the list to explore its actual relationships.'}</p>{searchError&&<button className="secondary" onClick={refresh}>Try again</button>}</div>}
+        {loading&&!graph?<div className="graph-state" role="status"><LoaderCircle className="spinning" size={30}/><h3>Following the connections…</h3><p>Retrieving up to {hops} hops from FalkorDB.</p></div>:error?<div className="graph-state" role="alert"><Unplug size={34}/><h3>Connection interrupted.</h3><p>{error}</p><button className="secondary" onClick={refresh}>Try again</button></div>:displayed?.nodes.length===0?<div className="graph-state"><Network size={36}/><h3>Your connections will appear here as you chat.</h3></div>:displayed?mode==='simple'?<SimpleExplanation graph={filter?{...displayed,nodes:displayed.nodes.filter(n=>n.type===filter),edges:displayed.edges.filter(e=>displayed.nodes.some(n=>n.id===e.source&&n.type===filter)&&displayed.nodes.some(n=>n.id===e.target&&n.type===filter))}:displayed} select={setSelection}/>:<GraphCanvas graph={displayed} root={root} mode={mode} filter={filter} selection={selection} select={setSelection} collapsed={collapsed} toggle={toggle}/>:<div className="graph-state"><Network size={36}/><h3>{searchError?'Connect your graph.':'Start with something you know.'}</h3><p>{searchError||'Choose an entity from the list to explore its actual relationships.'}</p>{searchError&&<button className="secondary" onClick={refresh}>Try again</button>}</div>}
         <footer className="graph-stage-footer"><span>{graph?<><span className="graph-live-dot"/> Snapshot from FalkorDB{loadedAt?` · loaded ${loadedAt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}</>:'No graph snapshot loaded'}</span><span><Maximize2 size={12}/> Select to inspect · Fit to reframe</span></footer>
       </section>{graph?<Inspector graph={graph} selection={selection} focus={focus} select={setSelection}/>:<aside className="graph-inspector"><div className="inspector-heading">INSPECTOR</div><p className="inspector-help">Entity details appear after a graph is loaded.</p></aside>}
-    </div></div></dialog>;
+    </div></div></Container>;
 }
