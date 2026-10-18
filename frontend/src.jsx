@@ -103,7 +103,7 @@ function App(){
      setWorkspace(w=>({...w,conversations:{...w.conversations,[id]:[...(w.conversations[id]||[]).filter(m=>!additions.some(a=>a.id===m.id)),...additions]}}));
      setFiles([]);setSource('typed');setDrafts(d=>({...d,[id]:''}));delete pending.current[id];
      window.dispatchEvent(new Event('orbit:graph-changed'));
-   }catch(e){setChatError(e.message||'Chat unavailable. Retry the message.');window.dispatchEvent(new Event('orbit:graph-changed'));}
+   }catch(e){setDrafts(d=>({...d,[id]:content}));setChatError(e.message||'Chat unavailable. Retry the message.');window.dispatchEvent(new Event('orbit:graph-changed'));}
    finally{sending.current=false;setBusy(false);composer.current?.focus();}
  }
 
