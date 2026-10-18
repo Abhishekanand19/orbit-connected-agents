@@ -30,3 +30,15 @@
 @media(max-width:650px){.panel-resizer{display:none}.graph-dock{max-width:100%;min-width:0}.signin-demo-notice{gap:10px;flex-wrap:wrap}}
 
 @media(max-width:760px){.sidebar{position:fixed;display:none;width:280px}.sidebar.mobile-open{display:flex}.panel-resizer{display:none}.graph-dock{max-width:100%}}
+
+.avatar{animation:avatar-idle 7s ease-in-out infinite;animation-delay:var(--avatar-offset,0s);transform-origin:center}
+.avatar .face{transform-box:fill-box;transform-origin:center;animation:avatar-blink 9s infinite;animation-delay:var(--avatar-offset,0s)}
+@keyframes avatar-idle{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-1.5px) rotate(1deg)}}
+@keyframes avatar-blink{0%,43%,47%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}72%,78%{transform:translateX(.8px)}}
+.pending-agent{display:flex;align-items:center;gap:12px}.thinking-ring{display:inline-block;position:relative;width:22px;height:22px;margin:8px;vertical-align:middle;animation:thinking-orbit 1.4s linear infinite}.thinking-ring i{position:absolute;left:9px;top:9px;width:3px;height:3px;border-radius:50%;background:#ed947e}
+@keyframes thinking-orbit{to{transform:rotate(360deg)}}
+.inline-handoff:has(.thinking-ring)>.avatar,.pending-agent>.avatar,.message.assistant:has(.thinking-ring)>.avatar{animation:avatar-think 2s ease-in-out infinite}
+@keyframes avatar-think{50%{transform:translateY(-2px) rotate(-3deg)}}
+.inline-handoff:has([data-streaming=true])>.avatar,.message.assistant:has(>.message-bubble [data-streaming=true])>.avatar{animation:avatar-speak .5s ease-out,avatar-idle 7s .5s infinite}
+@keyframes avatar-speak{50%{transform:translateY(-3px) scale(1.04)}}
+@media(prefers-reduced-motion:reduce){.avatar,.avatar .face,.thinking-ring{animation:none!important}}
