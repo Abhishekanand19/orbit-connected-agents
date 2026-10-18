@@ -1,0 +1,57 @@
+/* Motion belongs to the SVG character, never its layout box. */
+svg.living-avatar{animation:none!important;overflow:visible}
+.living-avatar .character{transform-origin:39px 42px;animation:coral-character 8s ease-in-out infinite;animation-delay:var(--avatar-offset)}
+.living-avatar .gaze{animation:character-gaze 6.4s ease-in-out infinite;animation-delay:var(--avatar-offset)}
+.living-avatar .face{transform-box:fill-box;transform-origin:center;animation:character-blink 5.7s infinite!important;animation-delay:var(--avatar-offset)!important}
+.living-avatar .character-mouth{transform-box:fill-box;transform-origin:center;animation:character-smile 7s ease-in-out infinite;animation-delay:var(--avatar-offset)}
+.living-avatar .character-sparks{opacity:0;transform-origin:39px 39px;animation:character-sparkles 11s infinite;animation-delay:var(--avatar-offset)}
+.bot-shape-1 .character{animation-name:planner-character;animation-duration:6.3s}.bot-shape-1 .character-body{animation:body-pulse 6.3s infinite}
+.bot-shape-2 .character{animation-name:research-character;animation-duration:7.1s}.bot-shape-2 .gaze{animation-duration:4.8s}
+.bot-shape-3 .character{animation-name:communication-character;animation-duration:6.8s}.bot-shape-3 .character-mouth{animation-duration:3.7s}
+.bot-shape-4 .character{animation-name:task-character;animation-duration:13s}
+@keyframes character-gaze{0%,100%{transform:translate(0,0)}18%,29%{transform:translate(-2.8px,.5px)}43%,54%{transform:translate(2.8px,-.5px)}68%,75%{transform:translate(0,-2px)}85%,91%{transform:translate(0,1.5px)}}
+@keyframes character-blink{0%,36%,40%,73%,77%,100%{transform:scaleY(1)}38%,75%{transform:scaleY(.08)}}
+@keyframes character-smile{0%,40%,100%{transform:scale(1)}55%,75%{transform:scale(1.3,1.6)}}
+
+
+
+
+
+@keyframes body-pulse{0%,100%{opacity:1}25%{opacity:.82}}
+@keyframes character-sparkles{0%,48%,72%,100%{opacity:0;transform:scale(.85)}53%,65%{opacity:.8;transform:scale(1.06)}}
+.inline-handoff:has(.thinking-ring) .character,.pending-agent .character,.message.assistant:has(.thinking-ring)>.avatar .character,.inline-handoff:has([data-streaming=true])>.avatar .character,.message.assistant:has(.message-bubble [data-streaming=true])>.avatar .character,.chat:has(.thinking-ring) .chat-header .character{animation-duration:2.6s}
+.inline-handoff:has([data-streaming=true]) .character-mouth{animation-duration:.7s}.inline-handoff:has(.thinking-ring) .character-sparks,.inline-handoff:has([data-streaming=true]) .character-sparks{animation-duration:2s}
+@media(prefers-reduced-motion:reduce){svg.living-avatar *,svg.living-avatar{animation:none!important}.living-avatar .character-sparks{opacity:0}}
+
+/* Readable at sidebar/video scale; transforms never affect layout. */
+.living-avatar .character{animation-duration:3.6s}.bot-shape-1 .character{animation-duration:3.1s}.bot-shape-2 .character{animation-duration:2.8s}.bot-shape-3 .character{animation-duration:3.8s}.bot-shape-4 .character{animation-duration:2.9s}
+
+
+
+
+
+.motion-accent{pointer-events:none;opacity:.65}.motion-accent>*{display:none;transform-origin:39px 39px}
+.bot-shape-1 .orbit-accent,.bot-shape-2 .orbit-accent{display:block;animation:accent-orbit 3.8s linear infinite}.bot-shape-2 .orbit-accent{stroke-width:4;stroke-dasharray:24 180;opacity:.5;animation-duration:2.8s}
+.bot-shape-3 .speech-accent,.bot-shape-4 .badge-accent{display:block;transform-origin:65px 13px;animation:accent-pulse 2.8s ease-in-out infinite}
+@keyframes accent-orbit{to{transform:rotate(360deg)}}
+@keyframes accent-pulse{0%,100%{transform:scale(.8);opacity:.35}50%{transform:scale(1.15);opacity:.9}}
+.pending-agent .living-avatar,.inline-handoff:has(.thinking-ring)>.living-avatar,.inline-handoff:has([data-streaming=true])>.living-avatar,.message.assistant:has(.thinking-ring)>.living-avatar,.message.assistant:has(.message-bubble [data-streaming=true])>.living-avatar{filter:drop-shadow(0 0 3px #ed947e66)}
+.pending-agent .character,.inline-handoff:has(.thinking-ring) .character,.inline-handoff:has([data-streaming=true])>.avatar .character,.message.assistant:has(.thinking-ring)>.avatar .character,.message.assistant:has(.message-bubble [data-streaming=true])>.avatar .character{animation-duration:2s}
+@media(prefers-reduced-motion:reduce){.living-avatar .motion-accent{display:none}}
+
+@keyframes coral-character{0%,100%{transform:translateY(6px) scale(1.1,.9)}18%{transform:translateY(3px) scale(1.14,.85)}48%{transform:translateY(-15px) rotate(5deg) scale(.94,1.07)}76%{transform:translateY(5px) scale(1.08,.94)}}
+
+@keyframes planner-character{0%,100%{transform:translateX(-12px) rotate(-9deg)}50%{transform:translateX(12px) rotate(9deg)}}
+
+@keyframes research-character{0%,100%{transform:translate(0,-11px) rotate(-5deg)}25%{transform:translate(11px,0) rotate(7deg)}50%{transform:translate(0,11px) rotate(5deg)}75%{transform:translate(-11px,0) rotate(-7deg)}}
+
+@keyframes communication-character{0%,100%{transform:translate(-7px,4px) rotate(-10deg)}30%{transform:translate(6px,-8px) rotate(8deg)}48%{transform:translate(7px,-4px) rotate(-12deg) scale(1.06)}75%{transform:translate(-4px,5px) rotate(7deg)}}
+
+@keyframes task-character{0%,100%{transform:translate(-8px,3px) rotate(-20deg)}25%{transform:translate(4px,-12px) rotate(15deg) scale(.95,1.06)}50%{transform:translate(8px,3px) rotate(20deg)}75%{transform:translate(-4px,-9px) rotate(-15deg) scale(1.05,.96)}}
+
+.living-avatar .character{animation-duration:2.8s}.bot-shape-1 .character{animation-duration:2.5s}.bot-shape-2 .character{animation-duration:3s}.bot-shape-3 .character{animation-duration:3.2s}.bot-shape-4 .character{animation-duration:2.7s}
+.color-burst{display:none;pointer-events:none}.bot-shape-3 .color-burst{display:block}
+.color-burst circle{opacity:0;animation:color-confetti 3.2s ease-out infinite;animation-delay:var(--burst-delay)}
+@keyframes color-confetti{0%,28%{opacity:0;transform:translate(0,0) scale(.4)}36%{opacity:.95}65%{opacity:.8;transform:translate(var(--burst-x),var(--burst-y)) scale(1)}80%,100%{opacity:0;transform:translate(var(--burst-x),var(--burst-y)) scale(.5)}}
+@media(prefers-reduced-motion:reduce){.color-burst{display:none!important}}
+.pending-agent .living-avatar .character{animation-duration:2s}
