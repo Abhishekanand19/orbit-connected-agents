@@ -14,13 +14,13 @@ export default function StoryTaskMessage({content,actionIds=[],checklist=[]}){
  if(checklist.length)return <><p>I've made a short to-do list for you.</p><StoryChecklist tasks={checklist}/><p>I'll keep these tasks linked to the updated plan.</p></>;
  let text=content;
  if(email){
-  const status=email.status==='VERIFIED'?'[✓] Email sent to Priya. Verified submission: '+email.payload.to.join(', ')+'.':
-   email.status==='UNKNOWN'?'[ ] Email submission is unverified. Do not resend.':
-   email.status==='FAILED'?'[✗] Email failed. Review the action result.':
-   email.status==='EXECUTING'?'[ ] Email is executing; provider readback is pending.':
-   email.status==='REJECTED'?'[ ] Email proposal rejected. Nothing sent.':
-   email.status==='APPROVED'?'[ ] Email approved; execution and readback pending.':'[ ] Email to Priya awaiting approval.';
-  text=text.replace('[ ] Email to Priya awaiting approval.',status);
+  const status=email.status==='VERIFIED'?'[✅] Email sent to Priya. Verified submission: '+email.payload.to.join(', ')+'.':
+   email.status==='UNKNOWN'?'[⏳] Email submission is unverified. Do not resend.':
+   email.status==='FAILED'?'[❌] Email failed. Review the action result.':
+   email.status==='EXECUTING'?'[⏳] Email is executing; provider readback is pending.':
+   email.status==='REJECTED'?'[⏳] Email proposal rejected. Nothing sent.':
+   email.status==='APPROVED'?'[⏳] Email approved; execution and readback pending.':'📧 Waiting for approval to email Priya.';
+  text=text.replace('📧 Waiting for approval to email Priya.',status);
  }
  return <p>{text}</p>;
 }
