@@ -1,9 +1,10 @@
 import React,{useEffect,useState} from 'react';
 import {actionRequest} from './services';
+import StreamingText from './StreamingText';
 import StoryChecklist from './StoryChecklist';
 
-export default function StoryTaskMessage({content,actionIds=[],checklist=[]}){
- const [email,setEmail]=useState(null);
+export default function StoryTaskMessage({content,actionIds=[],checklist=[],streamId,onComplete}){
+ const [email,setEmail]=useState(null),[ready,setReady]=useState(false);
  useEffect(()=>{
   if(!actionIds.length)return;
   let active=true;
@@ -11,7 +12,7 @@ export default function StoryTaskMessage({content,actionIds=[],checklist=[]}){
   load();window.addEventListener('orbit:graph-changed',load);
   return()=>{active=false;window.removeEventListener('orbit:graph-changed',load);};
  },[actionIds]);
- if(checklist.length)return <><p>I've made a short to-do list for you.</p><StoryChecklist tasks={checklist}/><p>I'll keep these tasks linked to the updated plan.</p></>;
+ if(checklist.length)return <><p><StreamingText id={streamId+':intro'} text="I've made a short to-do list for you." onComplete={()=>setReady(true)}/></p>{ready&&<><StoryChecklist tasks={checklist}/><p><StreamingText id={streamId+':outro'} text="I'll keep these tasks linked to the updated plan." onComplete={onComplete}/></p></>}</>;
  let text=content;
  if(email){
   const status=email.status==='VERIFIED'?'[✅] Email sent to Priya. Verified submission: '+email.payload.to.join(', ')+'.':
@@ -22,5 +23,5 @@ export default function StoryTaskMessage({content,actionIds=[],checklist=[]}){
    email.status==='APPROVED'?'[⏳] Email approved; execution and readback pending.':'📧 Waiting for approval to email Priya.';
   text=text.replace('📧 Waiting for approval to email Priya.',status);
  }
- return <p>{text}</p>;
+ return <p><StreamingText id={streamId} text={text} onComplete={onComplete}/></p>;
 }
