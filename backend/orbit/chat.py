@@ -19,11 +19,25 @@ class ChatRequest(StrictModel):
     conversation_id:Id
     content:Text
     source:Literal['typed','voice_transcript']='typed'
+    attachment_ids:list[Id]=Field(default_factory=list,max_length=4)
     legacy_messages:list[MessageCreate]=Field(default_factory=list,max_length=500)
 
 class ChatEngine:
     def __init__(self,service):self.s=service
     def turn(self,req):
+        attachments=[]
+        for id in req.attachment_ids:
+            node=self.s.repo.get_node(id)
+            if node['type']!='Source' or node['properties'].get('record_kind')!='ATTACHMENT':raise GraphError(400,'attachment','Invalid attachment.')
+            attachments.append({'id':id,**node['properties']})
+        result=self._dispatch(req)
+        if attachments:
+            from .models import EntityType,RelationType
+            self.s.repo.upsert_node(req.id,EntityType.Message,{'attachments':json.dumps(attachments)})
+            for a in attachments:self.s.repo.upsert_edge(a['id'],RelationType.MENTIONED_IN,req.id,{})
+            result['user']=self.s.repo.get_node(req.id)
+        return result
+    def _dispatch(self,req):
         if self.s.repo.db.settings.graph.startswith('orbit_story_'):
             from .story import StoryEngine
             with _lock:return StoryEngine(self.s).turn(req)
