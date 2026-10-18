@@ -1,22 +1,40 @@
 import {test,expect} from '@playwright/test';
-const status={connections:[{id:'gmail',status:'connected',can_connect:true},{id:'calendar',status:'needs_permission',can_connect:true,detail:'Calendar permission is missing.'},{id:'slack',status:'disconnected',can_connect:false,detail:'Set SLACK_BOT_TOKEN in the backend.'}]};
-async function mockStatus(context,body=status){await context.route('**/api/onboarding/connections',route=>route.fulfill({json:body}));}
-test('dedicated welcome tab, connectors, completion and original workspace',async({page,context},info)=>{
- await mockStatus(context);await page.goto('/');await expect(page.getByRole('button',{name:'Get started in a new tab'})).toBeVisible();const opened=context.waitForEvent('page');await page.getByRole('button',{name:'Get started in a new tab'}).click();const welcome=await opened;await expect(welcome).toHaveURL(/\/welcome$/);await expect(welcome.getByRole('heading',{name:'Welcome to Orbit.'})).toBeVisible();await expect(welcome.locator('.sidebar')).toHaveCount(0);await welcome.screenshot({animations:'disabled',path:info.outputPath('welcome.png')});
- await welcome.getByRole('button',{name:'Next',exact:true}).click();await expect(welcome.locator('.connector-row')).toHaveCount(7);await expect(welcome.locator('[data-service=gmail]')).toContainText('Connected');await expect(welcome.locator('[data-service=calendar]')).toContainText('Reconnect');await expect(welcome.locator('[data-service=drive]')).toContainText('Coming soon');await expect(welcome.locator('[data-service=tasks]')).toContainText('Coming soon');await expect(welcome.locator('[data-service=excel]')).toContainText('Coming soon');await expect(welcome.locator('[data-service=teams]')).toContainText('Coming soon');await expect(welcome.getByRole('link',{name:'Reconnect'})).toHaveAttribute('href',/\/auth\/google\/connect\?onboarding=true$/);await welcome.screenshot({animations:'disabled',fullPage:true,path:info.outputPath('connections-controlled-statuses.png')});
- await welcome.getByRole('button',{name:'Continue to Orbit'}).click();await expect(welcome).toHaveURL('http://127.0.0.1:5174/');await expect(welcome.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();await expect(welcome.getByRole('textbox',{name:'Message',exact:true})).toBeVisible();await expect(welcome.getByRole('navigation',{name:'Your bots'}).locator('button')).toHaveCount(5);await expect(welcome.locator('.official-brand')).toHaveAttribute('src','/brand/orbit-symbol.svg');await expect(welcome.locator('link[rel=icon]')).toHaveAttribute('href','/brand/orbit-symbol.svg');await welcome.screenshot({animations:'disabled',path:info.outputPath('original-workspace.png')});
- await welcome.reload();await expect(welcome.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();await expect(page.locator('.sidebar')).toHaveCount(0);await expect(page.getByRole('button',{name:'Go to Orbit tab'})).toBeVisible();expect(context.pages().length).toBe(2);
- await welcome.getByRole('button',{name:'Open Graph View'}).click();await expect(welcome.getByRole('region',{name:'Graph exploration workspace'})).toBeVisible();await welcome.getByRole('button',{name:'Close graph workspace'}).click();await welcome.getByRole('button',{name:'Toggle bot settings'}).click();await expect(welcome.getByRole('button',{name:'Close settings'})).toBeVisible();
+const names=['Gmail','Google Drive','Google Calendar','Google Tasks','Slack','Microsoft Excel','Microsoft Teams'];
+const welcome=page=>expect(page.getByRole('heading',{name:'Sign in — Orbit demo'})).toBeVisible();
+
+test('exact reference, private editable input, seven preview switches and three navigation cycles',async({page},info)=>{
+ const requests=[];page.on('request',r=>requests.push({url:r.url(),body:r.postData()||''}));
+ for(let round=0;round<3;round++){
+  await page.goto('/welcome');if(round===1)await page.reload();await welcome(page);
+  await expect(page.locator('.signin-reference>img')).toHaveAttribute('src','/brand/signin-reference.png');
+  const input=page.getByRole('textbox',{name:'Email or phone'});await input.fill('private-demo@example.test');await input.press('Backspace');await expect(input).toHaveValue('private-demo@example.tes');await input.fill('private-demo@example.test');
+  if(!round)await page.screenshot({path:info.outputPath('signin-reference.png')});
+  await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('switch')).toHaveCount(7);
+  for(const name of names){const control=page.getByRole('switch',{name:`${name} preview connection`});await expect(control).not.toBeChecked();await control.click();await expect(control).toBeChecked();await expect.poll(()=>control.evaluate(e=>getComputedStyle(e).backgroundColor)).toBe('rgb(41, 131, 83)');await control.click();await expect(control).not.toBeChecked();await control.click();}
+  await expect(page.getByText(/Preview controls only/)).toBeVisible();await expect(page.getByText('Unavailable',{exact:true})).toHaveCount(0);
+  if(!round)await page.screenshot({fullPage:true,path:info.outputPath('preview-connections.png'),animations:'disabled'});
+  await page.getByRole('button',{name:'Continue to Orbit'}).click();await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();await expect(page.getByRole('alert')).toHaveCount(0);
+ }
+ expect(requests.filter(r=>/\/auth\/|onboarding\/connections|disconnect/.test(r.url))).toEqual([]);
+ expect(requests.some(r=>r.url.includes('private-demo')||r.body.includes('private-demo'))).toBe(false);
+ await expect(page.locator('.sidebar-bottom')).toContainText('Plus subscription');
+ for(const [name,subtitle] of [['Coordinator','Manages all agents'],['Planner','Plans actions & keeps notes'],['Researcher','Finds information'],['Communication Assistant','Handles messages & replies'],['Task Manager','Creates & tracks tasks']]){await page.getByRole('navigation',{name:'Your bots'}).getByRole('button',{name,exact:true}).click();await expect(page.locator('.header-name')).toContainText(subtitle);}
+ await page.getByRole('navigation',{name:'Your bots'}).getByRole('button',{name:'Coordinator',exact:true}).click();await page.screenshot({path:info.outputPath('workspace-header.png')});
 });
-test('onboarding remains usable offline and on mobile without horizontal overflow',async({page,context},info)=>{
- await context.route('**/api/onboarding/connections',r=>r.fulfill({status:503,json:{error:'controlled unavailable'}}));await page.setViewportSize({width:390,height:844});await page.goto('/welcome');await expect(page.getByRole('heading',{name:'Welcome to Orbit.'})).toBeVisible();await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({animations:'disabled',fullPage:true,path:info.outputPath('welcome-mobile.png')});await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Connection status is unavailable');await expect(page.locator('.connected')).toHaveCount(0);await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({animations:'disabled',fullPage:true,path:info.outputPath('connections-mobile-offline.png')});await page.getByRole('button',{name:'Continue to Orbit'}).click();await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();
+
+test('workspace creation recovers without reload after a genuine network failure',async({page})=>{
+ let tries=0;await page.route('**/api/story/workspaces',async r=>{tries++;if(tries===1)await r.abort('connectionrefused');else await r.continue();});
+ await page.goto('/welcome');await page.getByRole('button',{name:'Next',exact:true}).click();await page.getByRole('button',{name:'Continue to Orbit'}).click();
+ await expect(page.getByRole('alert')).toContainText('Cannot reach the Orbit API');
+ await page.getByRole('button',{name:'Retry connection'}).click();await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();expect(tries).toBe(2);
+ expect(await page.evaluate(()=>localStorage.getItem('orbit.onboarding.complete.v1'))).toBe('true');
 });
-test('failed OAuth return and unavailable services stay truthful',async({page,context})=>{
- await mockStatus(context,{connections:[{id:'gmail',status:'needs_permission',can_connect:true},{id:'calendar',status:'unavailable',can_connect:true},{id:'slack',status:'needs_permission',can_connect:false}]});await page.goto('/welcome?step=apps&oauth=failed');await expect(page.getByRole('alert')).toContainText('Google authorization was not completed');await expect(page.locator('.connected')).toHaveCount(0);await expect(page.locator('[data-service=calendar]')).toContainText('Not verified');await expect(page.locator('[data-service=slack]')).toContainText('Needs permission');
+
+test('mobile reference and preview controls remain editable without horizontal overflow',async({page},info)=>{
+ await page.setViewportSize({width:390,height:844});await page.goto('/welcome');await welcome(page);await page.getByRole('textbox',{name:'Email or phone'}).fill('Demo');await page.screenshot({path:info.outputPath('signin-mobile.png')});
+ await page.getByRole('button',{name:'Next',exact:true}).click();await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.getByRole('switch',{name:'Microsoft Teams preview connection'}).click();await expect(page.getByRole('switch',{name:'Microsoft Teams preview connection'})).toBeChecked();
 });
-test('live read-only connection status and transparent logo pixels',async({page},info)=>{
- test.skip(process.env.ORBIT_LIVE_ONBOARDING!=='1','Explicit read-only live verification only');
- await page.goto('/welcome?step=apps');await expect(page.locator('.connection-check')).toHaveCount(0,{timeout:65000});await expect(page.locator('[data-service=gmail]')).toHaveAttribute('data-status','connected',{timeout:65000});await expect(page.locator('[data-service=calendar]')).toHaveAttribute('data-status','connected');await expect(page.locator('[data-service=slack]')).toHaveAttribute('data-status','connected');await expect(page.locator('.connected')).toHaveCount(3);await expect(page.locator('.coming-soon')).toHaveCount(4);
- const alpha=await page.evaluate(async()=>{const im=new Image();im.src='/brand/orbit-symbol.svg';await im.decode();const c=document.createElement('canvas');c.width=805;c.height=565;const ctx=c.getContext('2d');ctx.drawImage(im,0,0,805,565);const d=ctx.getImageData(0,0,805,565).data;let opaque=0,dark=0;for(let i=0;i<d.length;i+=4){if(d[i+3]>0){opaque++;if(d[i]<100&&d[i+1]<100&&d[i+2]<100)dark++;}}return {corner:d[3],betweenDots:d[((286*805)+402)*4+3],opaque,dark};});expect(alpha.corner).toBe(0);expect(alpha.betweenDots).toBe(0);expect(alpha.dark).toBe(0);expect(alpha.opaque).toBeGreaterThan(1000);
- await page.screenshot({animations:'disabled',fullPage:true,path:info.outputPath('connections-live-verified.png')});
+
+test('original dedicated onboarding tab still opens',async({page,context})=>{
+ await page.goto('/');const opened=context.waitForEvent('page');await page.getByRole('button',{name:'Get started in a new tab'}).click();const tab=await opened;await welcome(tab);await tab.getByRole('button',{name:'Next',exact:true}).click();await tab.getByRole('button',{name:'Continue to Orbit'}).click();await expect(tab.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();
 });
