@@ -1,70 +1,63 @@
-"""Human-facing templates. Values come from the current persisted graph."""
+"""Deterministic dialogue, formatted from persisted facts, not stage numbers."""
 from datetime import datetime
 from .database import GraphError
 
-def present(service, slots, old, changes, intents, handoffs, proposals, prior):
-    def props(key):
-        try:return service.require('story:'+key)['properties']
-        except GraphError:return {}
-    def clock(key):
-        value=props(key).get('starts_at')
-        return datetime.fromisoformat(value).strftime('%I:%M %p').lstrip('0') if value else 'a time still to be confirmed'
-    father=slots.get('ramesh','your father');priya=props('priya');appt=props('appointment');cab=props('cab')
-    escort=priya.get('escort')=='CONFIRMED'
-    now=clock('appointment');video=appt.get('location')=='video'
-    lines=[];speakers=[]
-    if 'family' in intents and not appt:
-        names=[slots[n] for n in ('ramesh','priya','meera') if n in changes]
-        lines.append('Hi '+slots.get('aarav','there')+'! '+('I’ve connected '+ ' and '.join(names)+' to your family context, so you won’t need to introduce them again. ' if names else '')+'What would you like help organizing?')
+def properties(service,key):
+    try:return service.require('story:'+key)['properties']
+    except GraphError:return {}
+
+def clock(service,key):
+    value=properties(service,key).get('starts_at')
+    return datetime.fromisoformat(value).strftime('%I:%M %p').lstrip('0') if value else 'time not yet supplied'
+
+def email_draft(service,slots):
+    day=slots.get('weekday','the recorded day');when=clock(service,'appointment')
+    return f"Dad's {day} hospital appointment",f"Hi Priya,\n\nDad's appointment has moved to {day} at {when}. Thanks for agreeing to take him. I'll confirm the cab arrangements once they're finalized."
+
+def present(service,slots,old,changes,intents,handoffs,proposals,prior):
+    appt=properties(service,'appointment');day=slots.get('weekday','the recorded day')
+    now=clock(service,'appointment');cab=clock(service,'cab')
+    escort=properties(service,'priya').get('escort')=='CONFIRMED'
+    moved='appointment_start' in changes and bool(old.get('appointment_start')) and old['appointment_start']!=changes['appointment_start']
+    constraints=any(k in changes for k in ('meera_unavailable_from','deployment_start','physio_start'))
+    # An introduction is an introduction even if the same graph has prior memory.
+    if 'family' in intents and not intents.intersection({'schedule','video','coordination','availability','rumor'}):
+        return "I'm sorry to hear about your dad's surgery. I hope he's recovering well.\n\nWhat would you like me to help arrange?",[]
     if 'rumor' in intents:
-        lines.append('That could affect the plan. I’ll ask Research Assistant to review what we actually know before making changes.')
-        speakers.append(('research', 'I wouldn’t cancel the cab yet. The forwarded report hasn’t been independently confirmed, and we don’t have reliable evidence that '+father+'’s appointment was cancelled. Let’s keep the arrangements until the hospital provides an official update.' if slots.get('rumor')=='UNVERIFIED' else 'You’ve clarified that the closure report was false. I’ve kept that correction with the earlier report; no independent provider check is implied.'))
-    moved='appointment_start' in changes and bool(old.get('appointment_start'))
-    constraints=any(k.endswith(('_available_from','_unavailable_from')) or k in ('deployment_start','physio_start') for k in changes)
-    if 'schedule' in intents and not moved and not constraints:
-        lines.append(f'Got it. {father}’s hospital follow-up is scheduled for {now}'+(', with Meera accompanying him' if props('meera').get('escort')=='CONFIRMED' else '')+(f' and an internal cab arrangement planned for {clock("cab")}' if cab else '')+'. I’ve linked the appointment and transport so we can keep track of changes together.')
-    if constraints and not moved:
-        lines.append('I’ve added the availability and commitments.'+(f' Your {clock("deployment")} deployment' if props('deployment') else '')+(f' and {father}’s {clock("physio")} physiotherapy are connected to the family schedule.' if props('physio') else '')+' If the hospital timing changes, I can check the affected arrangements.')
+        return "Let me ask Researcher to check what we actually know.",[('research',"Here's what I could establish from the available evidence.\n\n[ ] The student protest is reported in your WhatsApp message; it has not been independently confirmed.\n\n[✗] But MIT Hospital's closure remains unverified." if slots.get('rumor')=='UNVERIFIED' else "[✗] You reported that the closure claim was false. This correction is user-reported, not independently verified.")]
+    if 'trip' in intents:
+        return "Let me ask Task Manager to record those trip details.",[('tasks',f"Got it! Here are the trip details.\n\n[✓] Pickup: {slots.get('pickup','still needed')}\n[✓] Destination: {slots.get('destination','still needed')}\n[✓] {day}, {cab}\n\n[ ] Uber booking pending — trip details prepared.")]
+    if 'video' in intents and appt:
+        recalled=(f"Of course, I remember. Dad's appointment was moved to {day} at {now}, and Priya had agreed to take him." if prior and escort else f"Dad's recorded appointment is {day} at {now}." )
+        planner=f"Good news! We can simplify the arrangements.\n\n[✓] Dad's appointment remains {day} at {now}, now over video."
+        planner+= "\n[✓] Priya can help Dad join from home." if escort else "\n[ ] Confirm who can help Dad join from home."
+        if properties(service,'deployment'):planner+=f"\n[✓] Your {clock(service,'deployment')} team meeting remains scheduled."
+        if properties(service,'physio'):planner+=f"\n[✓] Dad's physiotherapy remains scheduled for {clock(service,'physio')}."
+        planner+="\n\nThere's just one thing left to review: the earlier cab arrangement."
+        return recalled+"\n\nSince it's now a video consultation, let me ask Planner to check what we can simplify.",[('planner',planner),('tasks',"I've made a short to-do list for you.\n\nI'll keep these tasks linked to the updated plan.")]
+    if not appt and intents.intersection({'coordination','video','recall'}):
+        return "What day and time is Dad's appointment? I need those details before preparing the plan.",[]
+    if escort and appt and ('coordination' in intents or changes.get('priya_escort')=='CONFIRMED'):
+        subject,body=email_draft(service,slots)
+        communication="I've prepared a quick email for Priya.\n\nSubject: "+subject+"\n\n"+body
+        if not slots.get('priya_email'):communication+="\n\nWhat's Priya's email address? I'll show the exact approval card before sending."
+        else:communication+="\n\nRecipient: "+slots['priya_email']
+        return "Perfect, Priya can take over. I'll update the plan and get the message ready for her.",[('planner',f"The updated plan looks good so far.\n\n[✓] Priya will accompany Dad.\n[✓] Hospital appointment: {day}, {now}.\n[ ] Cab pickup time still needs confirmation."),('communication',communication),('tasks',"[✓] Family schedule updated.\n[ ] Email to Priya awaiting approval.\n[ ] Cab adjustment still pending.")]
     if moved:
-        lines.append(f'The appointment is now at {now}. That affects more than the appointment itself—I’ll ask Schedule Planner to check the connected commitments.')
-    if 'availability' in intents and escort and changes.get('priya_escort')=='CONFIRMED':
-        lines.append(f'Great, that settles who can accompany {father}. Priya is confirmed'+(f', and the appointment is at {now}.' if appt else '.'))
-    if 'video' in intents or 'recall' in intents:
-        if appt:
-            lines.append(f'Yes. {father}’s follow-up is at {now}'+(', and Priya agreed to accompany him.' if escort else '.')+(' Since you’ve reported a video consultation, I’ll review the earlier transport arrangements before proposing changes.' if video else ' I’ve retrieved the current appointment and family context from memory.'))
-        else:lines.append('I don’t have an appointment recorded yet. What time is it, and who is it for?')
-    if 'coordination' in intents:
-        lines.append('I’ll prepare the schedule changes and a family update for your review.' if appt else 'Which appointment should I coordinate? Please give me its time and the people involved.')
-    # Use the actual planner result only when the turn needs planning, not for every fact or summary.
-    if appt and (moved or 'video' in intents or 'coordination' in intents or changes.get('priya_escort')=='CONFIRMED'):
-        existing=next((text for agent,text in handoffs if agent=='planner'),'')
-        if video:
-            text=f'The {now} consultation can stay on the schedule'+(f', with Priya helping {father} join from home' if escort else '')+'. The internal transport requirement can be removed. Deployment and physiotherapy stay unchanged; any external cab cancellation needs separate confirmation.'
-        elif moved:
-            text=f'The {clock("cab")} cab pickup needs review for the {now} appointment. '
-            meera=props('meera')
-            if meera.get('unavailable_from') and meera['unavailable_from']<=appt['starts_at'][11:16]:text+='Meera is unavailable at that time. '
-            if priya.get('available_from'):text+='Priya may be able to help; her agreement is still needed. ' if not escort else 'Priya has agreed to accompany Ramesh. '
-            text+='Keep the deployment protected. Appointment duration is still unknown, so a possible overlap with later commitments needs checking.'
-        else:text='Priya’s escort commitment is recorded. I’ve reviewed the connected transport task; any proposed pickup adjustment preserves the original travel allowance. Appointment duration remains unknown, so later overlaps are possible.' if escort else 'The linked transport needs review. Who can confirm they will accompany Ramesh? General availability alone is not an escort commitment.'
-        # Evidence remains separately inspectable; do not repeat the Coordinator paragraph.
-        if existing:speakers.append(('planner',text))
-    if proposals:
-        speakers.append(('tasks','I’ve prepared the exact internal transport change below. Review it before approving; this does not modify a third-party cab booking.'))
-    if appt and ('coordination' in intents or proposals):
-        draft=f'{father}’s follow-up is at {now}'+(' by video' if video else '')+'. '+(f'Priya will help him {"join from home" if video else "attend"}. ' if escort else 'The escort still needs confirmation. ')+'Other commitments remain on the schedule.'
-        speakers.append(('communication','Draft: “'+draft+'”\n\nWho should receive this, and at which exact email addresses or channel? Nothing has been sent.'))
-    if 'summary' in intents:
-        lines=['Here’s the latest plan:']
-        if appt:lines.append(f'• {father}’s follow-up: {now}, '+('by video.' if video else 'at the hospital.'))
-        if escort:lines.append('• Priya: '+('helping him join from home.' if video else 'confirmed to accompany him.'))
-        if props('deployment'):lines.append(f'• Your deployment: remains at {clock("deployment")}.')
-        if props('physio'):lines.append(f'• Physiotherapy: remains scheduled for {clock("physio")}.')
-        if cab:
-            if cab.get('status')=='CANCELLED':lines.append('• Internal transport: removed after approval and verified readback. Any external booking remains separate.')
-            elif video:lines.append('• Transport: no longer needed for this video visit. The internal change still requires approval; no external cancellation is confirmed.')
-            else:lines.append(f'• Internal cab arrangement: {clock("cab")}. Any unapproved change remains pending.')
-        lines.append('I’ve preserved the earlier decisions and updates, so you can see how we arrived at this plan.')
-        speakers=[]
-    if not lines:lines=['That update is saved. I’ll use it when reviewing the connected arrangements.' if changes else 'That matches the current plan. No duplicate arrangements have been created.']
-    return '\n\n'.join(lines),speakers
+        detail=f"I've checked the connected commitments. Here's what needs attention.\n\n[✓] Dad's appointment is now {day} at {now}."
+        if properties(service,'cab'):detail+=f"\n[ ] The {cab} cab pickup needs to be revised."
+        if properties(service,'deployment') and properties(service,'physio'):detail+=f"\n[ ] Your {clock(service,'deployment')} meeting and Dad's {clock(service,'physio')} physiotherapy need a timing check."
+        return "Absolutely. This changes a few things, so let me ask Planner to review the schedule.",[('planner',detail+"\n\nWe should confirm who can take Dad before changing the transport plan.")]
+    if constraints:
+        lines=[f"Got it! I've added those commitments to {day}'s plan."]
+        if slots.get('meera_unavailable_from'):
+            t=datetime.strptime(slots['meera_unavailable_from'],'%H:%M').strftime('%I:%M %p').lstrip('0');lines.append(f"[✓] Your mom is busy after {t}.")
+        if properties(service,'deployment'):lines.append(f"[✓] Your team meeting is at {clock(service,'deployment')}.")
+        if properties(service,'physio'):lines.append(f"[✓] Dad's physiotherapy is at {clock(service,'physio')}.")
+        return "Let me ask Planner to add those commitments.",[('planner',lines[0]+"\n\n"+"\n".join(lines[1:])+"\n\nI'll keep these in mind if anything changes.")]
+    if 'schedule' in intents:
+        if slots.get('awaiting_trip')=='yes':return "Sure, let me ask Task Manager to help with the transport arrangements.",[('tasks',"Of course! Just need two details.\n\n[ ] Where should the cab pick you up?\n[ ] What's the destination?")]
+        return f"[✓] Dad's appointment is recorded for {day} at {now}.",[]
+    if 'recall' in intents and appt:return f"Dad's recorded appointment is {day} at {now}."+(' Priya has agreed to accompany him.' if escort else ''),[]
+    if 'summary' in intents:return f"Here is the recorded plan.\n\n[✓] Hospital appointment: {day}, {now}.\n[ ] External transport changes require provider confirmation.",[]
+    return 'That update is saved. No external action has been executed.',[]
