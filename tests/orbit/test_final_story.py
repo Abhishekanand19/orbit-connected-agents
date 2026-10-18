@@ -35,13 +35,13 @@ def test_final_seven_parts(story):
     assert 'Got the trip details!' in route['handoffs'][0]['content']
     assert route['route_preview']
     commit=turn(s,COMMIT);assert '12:30 PM' in commit['handoffs'][0]['content']
-    rumor=turn(s,RUMOR);assert 'not independently confirmed' in rumor['handoffs'][0]['content']
-    assert '10924808/' in rumor['handoffs'][0]['content']
+    rumor=turn(s,RUMOR);assert 'does not confirm the reported Bengaluru student protest' in rumor['handoffs'][0]['content']
+    assert 'https://economictimes.indiatimes.com/topic/cjp-protest' in rumor['handoffs'][0]['content']
     assert story.require('story:indian-express:article')['properties']['publisher']=='The Indian Express'
     assert story.require('story:indian-express:article')['properties']['retrieval_status']=='NOT_RETRIEVED'
     sourced=[n for n in rumor['graph']['nodes'] if n['properties'].get('source_id')=='story:indian-express:article']
     assert sourced and all(n['properties']['status']=='UNVERIFIED' for n in sourced)
-    assert rumor['handoffs'][0]['content'].endswith("Manipal Hospital, Jayanagar's closure remains unverified.")
+    assert rumor['handoffs'][0]['content'].endswith("Manipal Hospital, Jayanagar is closed.")
     moved=turn(s,MOVE);assert s.require('story:appointment')['properties']['starts_at'][11:16]=='13:45'
     assert any(len(p['node_ids'])>=3 for p in json.loads(s.require(moved['decision_id'])['properties']['analysis'])['affected'])
     claim=s.require(StoryEngine(s).state()['slots']['_claim_appointment_start'])
