@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+test.use({video:'on'});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('orbit.onboarding.complete.v1','true'));});
 const family="Hey Orbit, I'm Aarav. My dad is Ramesh and Priya is my sister.";
 async function ready(page){await page.goto('/');await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();}
@@ -73,7 +74,7 @@ test('all five agents stream formatted responses without provider calls',async({
 
 test('living avatars and cancellable response pacing',async({page},info)=>{
  await ready(page);
- const animations=await page.locator('.bot-list .avatar').evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName));expect(animations).toHaveLength(5);expect(animations.every(a=>a.includes('avatar-idle'))).toBe(true);
+ const animations=await page.locator('.bot-list .character').evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName));expect(animations).toHaveLength(5);expect(animations.every(a=>a.endsWith('-character'))).toBe(true);
  await page.getByRole('textbox',{name:'Message',exact:true}).fill(family);
  const start=Date.now();await page.getByRole('button',{name:'Send message'}).click();await expect(page.locator('.thinking-ring')).toHaveCount(1);
  await page.screenshot({path:info.outputPath('thinking.png')});
@@ -81,4 +82,21 @@ test('living avatars and cancellable response pacing',async({page},info)=>{
  await expect(page.locator('.thinking-ring')).toHaveCount(0);await expect(page.locator('[data-streaming=true]')).toHaveCount(0);await expect(page.locator('.message.assistant')).toHaveCount(1);
  await page.screenshot({path:info.outputPath('idle.png')});
  await page.emulateMedia({reducedMotion:'reduce'});expect(await page.locator('.bot-list .avatar').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+});
+
+
+test('living SVG characters move without interaction for twenty seconds',async({page},info)=>{
+ await ready(page);
+ const frames=[];
+ for(let i=0;i<201;i++){
+  frames.push(await page.locator('.bot-list .living-avatar').evaluateAll(es=>es.map(e=>['.character','.gaze','.face','.character-mouth'].map(sel=>getComputedStyle(e.querySelector(sel)).transform))));
+  if(i%40===0)await page.screenshot({path:info.outputPath(`idle-${i/10}s.png`)});
+  if(i<200)await page.waitForTimeout(100);
+ }
+ for(let bot=0;bot<5;bot++)for(let part=0;part<4;part++)expect(new Set(frames.map(f=>f[bot][part])).size,`bot ${bot} part ${part}`).toBeGreaterThan(1);
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill(family);await page.getByRole('button',{name:'Send message'}).click();await expect(page.locator('.thinking-ring')).toHaveCount(1);
+ await expect.poll(()=>page.locator('.pending-agent .character, .message.assistant:has(.thinking-ring)>.avatar .character').first().evaluate(e=>getComputedStyle(e).animationDuration)).toBe('2s');
+ await page.screenshot({path:info.outputPath('active-character.png')});
+ await expect(page.locator('.message.assistant .streaming-text')).toBeVisible();await expect(page.locator('[data-streaming=true]')).toHaveCount(0);
+ await page.emulateMedia({reducedMotion:'reduce'});expect(await page.locator('.bot-list .character').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
 });
