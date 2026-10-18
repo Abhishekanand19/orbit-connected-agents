@@ -53,3 +53,16 @@ def test_denial_returns_safely_and_external_return_is_rejected(client,monkeypatc
     assert result.headers['location']=='http://127.0.0.1:5173/welcome?step=apps&oauth=failed'
     response=client.get('/auth/google/connect?onboarding=true',headers={'referer':'https://untrusted.example/welcome'},follow_redirects=False)
     assert 'orbit_onboarding_return' not in response.headers.get('set-cookie','')
+
+
+def test_disconnect_requires_ui_and_clears_shared_google_only(client,monkeypatch):
+    from backend.orbit import onboarding
+    vault=Vault({'scope':' '.join(SCOPES)})
+    vault.clear=lambda:setattr(vault,'value',None)
+    auth=GoogleAuth(vault);auth.states['pending']=('controlled',)
+    monkeypatch.setattr(onboarding,'google_auth',auth)
+    assert client.post('/api/onboarding/google/disconnect').status_code==403
+    assert vault.load()
+    response=client.post('/api/onboarding/google/disconnect',headers={'X-Orbit-UI':'1'})
+    assert response.json()=={'disconnected':['gmail','calendar']}
+    assert vault.load() is None and not auth.states
