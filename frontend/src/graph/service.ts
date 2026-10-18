@@ -10,7 +10,7 @@ async function request(path:string, signal:AbortSignal, body?:object):Promise<un
   const timer = setTimeout(()=>timeout.abort(),12000);
   try {
     const response = await fetch(API_BASE+path,{signal:timeout.signal, cache:'no-store',
-      headers:{'Content-Type':'application/json',...(localStorage.getItem('orbit.chat.mode')!=='normal'&&localStorage.getItem('orbit.story.workspace')?{'X-Orbit-Story':localStorage.getItem('orbit.story.workspace')!}:{})},
+      headers:{'Content-Type':'application/json',...(localStorage.getItem('orbit.chat.mode')!=='normal'&&(sessionStorage.getItem('orbit.story.workspace')||localStorage.getItem('orbit.story.workspace'))?{'X-Orbit-Story':(sessionStorage.getItem('orbit.story.workspace')||localStorage.getItem('orbit.story.workspace'))!}:{})},
       ...(body ? {method:'POST',body:JSON.stringify(body)} : {})});
     const data = await response.json();
     if(!response.ok) throw new GraphApiError(response.status===503
@@ -43,7 +43,7 @@ export function validateGraph(data:any):GraphData {
   return data;
 }
 export const graphService = {
-  async story(signal:AbortSignal):Promise<GraphData>{const data:any=await request('/api/story/state',signal);return validateGraph(data.graph);},
+  async story(signal:AbortSignal,conversationId?:string):Promise<GraphData>{const data:any=await request('/api/story/state'+(conversationId!==undefined?'?conversation_id='+encodeURIComponent(conversationId):''),signal);return validateGraph(data.graph);},
   async search(q:string,type:string,offset:number,signal:AbortSignal):Promise<EntityPage> {
     const params=new URLSearchParams({q,offset:String(offset),limit:'30'});
     if(type) params.set('type',type);
