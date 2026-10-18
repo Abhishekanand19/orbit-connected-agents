@@ -3,9 +3,9 @@ test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setIte
 const inputs=[
  "Hey bro, my parents and my sister are coming together this weekend for my dad's post-surgery care.",
  "Yeah buddy, help me make the arrangements. Dad has a hospital appointment on Monday at 11 AM. Can you book an Uber for 9:45 AM?",
- "From PES University, Bengaluru, to MIT Hospital.",
+ "From PES University, Bengaluru, to Manipal Hospital, Jayanagar.",
  "One more thing. Mom's busy after 12:30 PM, I've got a team meeting at 2:30 PM, and Dad has physiotherapy at 4 PM.",
- "Hey, I saw a WhatsApp message saying hospitals are closed because of the ongoing student protests. Can you check whether MIT Hospital is actually closed?",
+ "Hey, I saw a WhatsApp message saying hospitals are closed because of the ongoing student protests. Can you check whether Manipal Hospital, Jayanagar is actually closed?",
  "Hey, I just got an email from the hospital. Dad's Monday appointment has been moved from 11 AM to 1:45 PM. I'm a bit confused now. Can you help me figure things out?",
  "Okay, Priya said she can take Dad to the hospital on Monday. Can you update the plan and email her about the changes?",
  "Hey buddy, remember Dad's hospital appointment? The hospital now says he can attend Monday's 1:45 PM appointment over video. What changes in our plan?"
@@ -23,7 +23,23 @@ async function ready(page){await expect(page.getByRole('heading',{name:'Coordina
 test('seven-part story, New Chat memory, checklist and two hard-refresh regressions',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await ready(page);expect((await state(page)).graph.nodes).toEqual([]);
- let first;for(let i=0;i<7;i++){const r=await say(page,inputs[i]);if(i===0){first=r;expect(r.graph.nodes.filter(n=>n.type==='Person')).toHaveLength(3);}}
+ let first;for(let i=0;i<7;i++){const r=await say(page,inputs[i]);if(i===1){
+   const preview=page.locator('.message.user').last().getByRole('button',{name:'Enlarge route preview'});await expect(preview).toBeVisible();
+   await preview.click();await expect(page.getByRole('dialog',{name:'Enlarged route preview'})).toBeVisible();
+   await page.screenshot({path:info.outputPath('route-enlarged.png')});await page.getByRole('button',{name:'Close preview'}).click();
+  }
+  if(i===2){
+   expect(r.graph.nodes.find(n=>n.id==='story:hospital').properties.name).toBe('Manipal Hospital, Jayanagar');
+   await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
+   const panel=page.getByRole('region',{name:'Graph exploration workspace'});
+   await expect(panel.getByTestId('graph-canvas')).toContainText('Manipal Hospital, Jayanagar');
+   await page.screenshot({path:info.outputPath('hospital-network.png')});
+   await panel.getByRole('button',{name:'Simple View',exact:true}).click();
+   await expect(panel.getByTestId('simple-explanation')).toContainText('Manipal Hospital, Jayanagar');
+   await page.screenshot({path:info.outputPath('hospital-simple.png')});
+   await page.keyboard.press('Escape');
+  }
+  if(i===0){first=r;expect(r.graph.nodes.filter(n=>n.type==='Person')).toHaveLength(3);}}
  await expect(page.getByRole('log')).toContainText("What's Priya's email address?");
  await say(page,'Her email is priya@example.com.');await expect(page.getByRole('button',{name:'Approve exact action'})).toHaveCount(1);
  await expect(page.getByRole('log')).not.toContainText('Email sent to Priya');
