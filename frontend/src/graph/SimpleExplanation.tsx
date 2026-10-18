@@ -22,7 +22,7 @@ export default function SimpleExplanation({graph,select}:{graph:GraphData;select
    for(const n of ordered)stages.push({title:String(n.properties.name||'Family connection'),icon:Users,kind:'people',content:<>{fact(n)}{family.filter(e=>e.source===n.id).map(e=>relation(e.id))}</>});
   }else stages.push({title:'Recorded context',icon:Users,kind:'people',content:<>{graph.nodes.slice(0,6).map(fact)}{graph.edges.slice(0,5).map(e=>relation(e.id))}</>});
  }else{
-  stages.push({title:event.properties.location==='video'?'A video visit is now reported':'The current appointment',icon:CalendarDays,kind:'update',content:<>{fact(event)}<small>Reported by you · not independently provider-verified</small></>});
+  stages.push({title:event.properties.location==='video'?'A video visit is now reported':'The current appointment',icon:CalendarDays,kind:'update',content:<>{fact(event)}{graph.edges.filter(e=>e.source===event.id&&byId.get(e.target)?.properties.record_kind==='STORY_HOSPITAL').map(e=>fact(byId.get(e.target)!))}<small>Reported by you · not independently provider-verified</small></>});
   const paths=analysis.affected||[];
   const edgeIds=[...new Set<string>(paths.flatMap((p:any)=>p.edge_ids))].filter(id=>graph.edges.some(e=>e.id===id));
   const deps=edgeIds.length?edgeIds:graph.edges.filter(e=>e.type==='DEPENDS_ON'&&e.target===event.id).map(e=>e.id);
