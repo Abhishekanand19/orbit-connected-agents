@@ -9,7 +9,7 @@ import {nodeLabel,relationLabel,type GraphData,type Selection,type ViewMode} fro
 const nodeTypes={entity:EntityNode},edgeTypes={relationship:RelationshipEdge};
 interface Props {graph:GraphData;root:string;mode:ViewMode;filter:string;selection:Selection;select:(s:Selection)=>void;collapsed:Set<string>;toggle:(id:string)=>void;compact?:boolean;}
 export default function GraphCanvas({graph,root,mode,filter,selection,select,collapsed,toggle,compact=false}:Props) {
-  const fitted=useRef(false);
+  const fitted=useRef(false),canvas=useRef<HTMLDivElement>(null);
   const previous=useRef(new Map<string,string>());
   const coordinates=useRef(new Map<string,{x:number;y:number}>());
   const layout=useMemo(()=>{const next=layoutGraph(graph,root,mode,filter,collapsed,compact,coordinates.current);for(const [id,p] of next.positions)coordinates.current.set(id,p);return next;},[graph,root,mode,filter,collapsed,compact]);
@@ -27,6 +27,18 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
     previous.current=new Map(layout.nodes.map(n=>[n.id,JSON.stringify(n.properties)]));
   },[layout,mode,root,collapsed,toggle,setNodes]);
   useEffect(()=>{if(!instance||fitted.current||!layout.nodes.length) return;fitted.current=true;const frame=requestAnimationFrame(()=>instance.fitView({padding:.08,maxZoom:1.15,minZoom:.42,duration:250}));return()=>cancelAnimationFrame(frame);},[instance,layout]);
+  // Resize the viewport, not the graph: keep nodes and evidence positions intact.
+  useEffect(()=>{
+    if(!instance||!canvas.current)return;
+    let size='',frame=0;
+    const observer=new ResizeObserver(([entry])=>{
+      const next=`${Math.round(entry.contentRect.width)}:${Math.round(entry.contentRect.height)}`;
+      if(size&&size!==next&&fitted.current){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{void instance.fitView({padding:.08,maxZoom:1.15,minZoom:.2,duration:0});});}
+      size=next;
+    });
+    observer.observe(canvas.current);
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);};
+  },[instance]);
   const painted=nodes.map(n=>({...n,selected:selection?.kind==='node'&&selection.id===n.id,data:{...n.data,highlight:layout.edges.some(e=>highlighted.has(e.id)&&(e.source===n.id||e.target===n.id))}}));
   const nodePositions=new Map(nodes.map(n=>[n.id,n.position]));
   const labelBoxes:{x:number;y:number;width:number;height:number}[]=[];
@@ -57,7 +69,7 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
       markerEnd:{type:MarkerType.ArrowClosed,width:18,height:18,color:active?'#314ca5':'#8bab8c'},
       data:{entity:edge,labelOffset,label:mode==='simple'?relationLabel(edge.type):edge.type,cross,slot:i,inspect:()=>select({kind:'edge',id:edge.id}),active}};
   });
-  return <div className="graph-canvas" data-testid="graph-canvas" data-mode={mode} data-node-count={nodes.length} data-edge-count={edges.length}>
+  return <div ref={canvas} className="graph-canvas" data-testid="graph-canvas" data-mode={mode} data-node-count={nodes.length} data-edge-count={edges.length}>
     <ReactFlow<EntityFlowNode,RelationshipFlowEdge> nodes={painted} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onInit={setInstance} onNodesChange={onNodesChange} onNodeDragStop={(_,n)=>coordinates.current.set(n.id,{...n.position})} onNodeClick={(_,n)=>select({kind:'node',id:n.id})}
       onEdgeClick={(_,e)=>select({kind:'edge',id:e.id})} onPaneClick={()=>select(null)}
