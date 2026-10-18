@@ -7,9 +7,9 @@ from backend.orbit.actions import Actions
 
 INTRO="Hey bro, my parents and my sister are coming together this weekend for my dad's post-surgery care."
 TRIP="Yeah buddy, help me make the arrangements. Dad has a hospital appointment on Monday at 11 AM. Can you book an Uber for 9:45 AM?"
-ROUTE="From PES University, Bengaluru, to MIT Hospital."
+ROUTE="From PES University, Bengaluru, to Manipal Hospital, Jayanagar."
 COMMIT="One more thing. Mom's busy after 12:30 PM, I've got a team meeting at 2:30 PM, and Dad has physiotherapy at 4 PM."
-RUMOR="Hey, I saw a WhatsApp message saying hospitals are closed because of the ongoing student protests. Can you check whether MIT Hospital is actually closed?"
+RUMOR="Hey, I saw a WhatsApp message saying hospitals are closed because of the ongoing student protests. Can you check whether Manipal Hospital, Jayanagar is actually closed?"
 MOVE="Hey, I just got an email from the hospital. Dad's Monday appointment has been moved from 11 AM to 1:45 PM. I'm a bit confused now. Can you help me figure things out?"
 PRIYA="Okay, Priya said she can take Dad to the hospital on Monday. Can you update the plan and email her about the changes?"
 VIDEO="Hey buddy, remember Dad's hospital appointment? The hospital now says he can attend Monday's 1:45 PM appointment over video. What changes in our plan?"
@@ -23,11 +23,17 @@ def test_final_seven_parts(story):
     assert not any(n['type'] in ('Event','Booking') for n in first['graph']['nodes'])
     assert turn(s,INTRO,id='intro')==first
     trip=turn(s,TRIP);assert 'Where should the cab pick you up?' in trip['handoffs'][0]['content']
+    assert trip['route_preview']
     route=turn(s,ROUTE);assert 'Uber booking pending' in route['handoffs'][0]['content']
     assert s.require('story:cab')['properties']['pickup']=='PES University, Bengaluru'
+    assert story.require('story:hospital')['properties']['name']=='Manipal Hospital, Jayanagar'
+    assert story.require('story:appointment')['properties']['location']=='Manipal Hospital, Jayanagar'
+    assert story.require('story:cab')['properties']['destination']=='Manipal Hospital, Jayanagar'
+    assert '[✓] Destination: Manipal Hospital, Jayanagar' in route['handoffs'][0]['content']
+    assert not route['route_preview']
     commit=turn(s,COMMIT);assert '12:30 PM' in commit['handoffs'][0]['content']
     rumor=turn(s,RUMOR);assert 'not been independently confirmed' in rumor['handoffs'][0]['content']
-    assert rumor['handoffs'][0]['content'].endswith("MIT Hospital's closure remains unverified.")
+    assert rumor['handoffs'][0]['content'].endswith("Manipal Hospital, Jayanagar's closure remains unverified.")
     moved=turn(s,MOVE);assert s.require('story:appointment')['properties']['starts_at'][11:16]=='13:45'
     assert any(len(p['node_ids'])>=3 for p in json.loads(s.require(moved['decision_id'])['properties']['analysis'])['affected'])
     claim=s.require(StoryEngine(s).state()['slots']['_claim_appointment_start'])
