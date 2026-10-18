@@ -58,7 +58,20 @@ def parse(text,slots):
         else:facts['priya_email']=addresses[0].rstrip('.');intents.add('coordination')
     route=re.search(r'\bfrom\s+(.+?)\s+to\s+(.+?)[.!?]*$',text,re.I)
     if route and (slots.get('awaiting_trip')=='yes' or 'university' in normalized):
-        facts['pickup']=route[1].rstrip(', ');facts['destination']=route[2].rstrip('.!? ');facts['awaiting_trip']='no';facts['appointment_location']=facts['destination'];intents.add('trip')
+        facts['pickup']=route[1].rstrip(', ');facts['destination']=route[2].rstrip('.!? ');facts['awaiting_trip']='no';intents.add('trip')
+        if re.fullmatch(r'manipal\s+hospital[, ]+jay(?:a)?nagar',facts['destination'],re.I):facts['destination']='Manipal Hospital, Jayanagar'
+        facts['appointment_location']=facts['destination']
+    if slots.get('pending_specialist')=='tasks' and 'trip' not in intents:
+        pickup=re.search(r'(?:pick\s*(?:me|us)?\s*up\s+(?:at|from)|pickup(?: is|:)?)\s+(.+)',text,re.I)
+        destination=re.search(r'(?:destination(?: is|:)?|take (?:me|us) to)\s+(.+)',text,re.I)
+        if pickup or destination:
+            if pickup:facts['pickup']=pickup[1].rstrip('.!? ')
+            if destination:
+                value=destination[1].rstrip('.!? ')
+                facts['destination']='Manipal Hospital, Jayanagar' if re.fullmatch(r'manipal\s+hospital[, ]+jay(?:a)?nagar',value,re.I) else value
+                facts['appointment_location']=facts['destination']
+            facts['awaiting_trip']='no' if all(facts.get(k) or slots.get(k) for k in ('pickup','destination')) else 'yes'
+            intents.add('trip')
     if re.search(r'\b(he|his|him)\b',normalized) and 'ramesh' not in slots and 'ramesh' not in facts:
         questions.append('Who does “he” refer to?')
     if re.search(r'\b(he|his|him)\b',normalized) and len(names&{'aarav','ramesh'})>1:
