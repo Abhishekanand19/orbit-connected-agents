@@ -37,20 +37,33 @@ def times(text):
 
 def parse(text,slots):
     normalized=normalize(text);facts={};questions=[];intents=set()
-    # Explicit names create identities; kinship/pronouns resolve only stored identities.
+    # Role identities need no fabricated personal names.
     names={name for name in NAMES if re.search(r'\b'+name+r'\b',normalized)}
     for name in names:facts[name]=name.title()
+    introduction=bool(re.search(r'\b(parents|family|sister|father|dad|papa)\b',normalized) and re.search(r'\b(coming|introduce|my name|i am|i.m|here|surgery|care|is my|name is)\b',normalized) and not re.search(r'\b(appointment|video|physiotherapy|meeting)\b',normalized))
+    if introduction:intents.add('family')
     for alias,name in ALIASES.items():
         if re.search(r'\b'+alias+r'\b',normalized) and name not in names and name not in slots:
-            questions.append(f'What is your {alias}’s name?')
-        identity=re.search(r'\b'+alias+r'\s+(?:is\s+|named\s+|called\s+)?([a-z]+)',normalized)
-        if identity and identity[1] not in set(NAMES)|{'has','had','have','can','cannot','will','was','is','at','and','the','a','an','confirms','confirmed','available','unavailable','free','not','busy','says','needs','with','for','to','is','taking','takes','joins','helping','slot','timing'}:
-            questions.append(f'Who is {identity[1].title()}? Please clarify the family identity before I change the graph.')
-    if re.search(r'\b(he|his|him)\b',normalized) and 'ramesh' not in slots and 'ramesh' not in names:
+            facts[name]={'ramesh':'Father','meera':'Mother','priya':'Sister'}[name]
+    if 'parents' in normalized:
+        for key,label in [('ramesh','Father'),('meera','Mother')]:
+            if key not in slots and key not in facts:facts[key]=label
+    if re.search(r'\b(team meeting|meeting)\b',normalized):facts['deployment_label']='Team meeting'
+    if 'monday' in normalized:facts['weekday']='Monday'
+    if 'email' in normalized and re.search(r'\b(priya|sister|her)\b',normalized) and not re.search(r'email from',normalized):
+        intents.add('coordination');facts['email_requested']='yes'
+    addresses=re.findall(r'[^\s<>@,;]+@[^\s<>@,;]+\.[A-Za-z]{2,}',text)
+    if addresses and (slots.get('email_requested') or 'email' in normalized):
+        if len(addresses)!=1:questions.append('What is Priya’s single email address?')
+        else:facts['priya_email']=addresses[0].rstrip('.');intents.add('coordination')
+    route=re.search(r'\bfrom\s+(.+?)\s+to\s+(.+?)[.!?]*$',text,re.I)
+    if route and (slots.get('awaiting_trip')=='yes' or 'university' in normalized):
+        facts['pickup']=route[1].rstrip(', ');facts['destination']=route[2].rstrip('.!? ');facts['awaiting_trip']='no';facts['appointment_location']=facts['destination'];intents.add('trip')
+    if re.search(r'\b(he|his|him)\b',normalized) and 'ramesh' not in slots and 'ramesh' not in facts:
         questions.append('Who does “he” refer to?')
     if re.search(r'\b(he|his|him)\b',normalized) and len(names&{'aarav','ramesh'})>1:
         questions.append('Does “he” refer to Aarav or Ramesh?')
-    if any(name not in slots for name in names):intents.add('family')
+    if any(name not in slots for name in names) and not intents:intents.add('family')
     # Split independent clauses, not entire-message equality checks.
     clauses=re.split(r'[,;!\n]|\.(?!\d)|\band\b|\bbut\b',normalized)
     current=slots.get('focus','appointment' if slots.get('appointment_start') else '')
@@ -64,9 +77,9 @@ def parse(text,slots):
             if actor not in ('priya','meera'):actor=None;questions.append('Do you mean Meera or Priya?')
         if actor:last_actor=actor
         subject=None
-        if re.search(r'\b(cab|taxi|transport|ride)\b',clause):subject='cab'
+        if re.search(r'\b(cab|taxi|transport|ride|uber)\b',clause):subject='cab'
         elif 'physiotherapy' in clause:subject='physio'
-        elif re.search(r'\b(deployment|deploy|release|work)\b',clause):subject='deployment'
+        elif re.search(r'\b(deployment|deploy|release|work|meeting)\b',clause):subject='deployment'
         elif re.search(r'\b(appointment|followup|consultation|visit|slot|timing)\b',clause):subject='appointment'
         elif re.search(r'\b(moved|rescheduled|shifted|postponed)\b',clause):subject=current
         reschedule=bool(re.search(r'\b(moved|rescheduled|shifted|postponed|changed|now|from.+to)\b',clause))
@@ -113,6 +126,8 @@ def parse(text,slots):
             intents.add('rumor');facts['rumor']='REFUTED' if re.search(r'\b(not closed|no closure|false|untrue)\b',clause) else 'UNVERIFIED'
         if 'physiotherapy' in clause and re.search(r'\b(done|completed|finished)\b',clause):facts['physio_status']='DONE'
     if last_actor:facts['person_focus']=last_actor
+    if 'rumor' in intents and 'protest' in normalized:facts['protest']='UNVERIFIED'
+    if 'rumor' in intents and 'whatsapp' in normalized:facts['rumor_source']='WhatsApp message reported by user'
     if 'tomorrow' in normalized:facts['day_offset']='1'
     if re.search(r'\b(coordinate|organize|organise|arrange everything|tell everyone|notify|family update|keep everyone|sort.*out)\b',normalized):intents.add('coordination')
     if re.search(r'\b(remember|recall|remind)\b',normalized):intents.add('recall')
@@ -121,6 +136,7 @@ def parse(text,slots):
     if not intents and not questions:questions.append('Tell me who is involved and what changed—an appointment time, availability, transport, or a request for a summary.')
     if 'rumor' in intents and not (names or slots.get('ramesh') or slots.get('appointment_start') or facts.get('appointment_start')):
         questions.append('Whose hospital appointment does this report concern?')
+    if facts.get('cab_start') and not slots.get('pickup') and not facts.get('pickup'):facts['awaiting_trip']='yes'
     if current:facts['focus']=current
     combined={**slots,**facts}
     for key in ('appointment','cab','physio','deployment'):
