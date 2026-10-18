@@ -1,5 +1,6 @@
 """Onboarding connection checks. Only authenticated provider reads; no action dispatch."""
 import os
+from fastapi import Request
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.responses import JSONResponse
 from .database import GraphError
@@ -41,6 +42,15 @@ def connector_status(auth=None,providers=None):
 
 
 def mount_onboarding(app):
+    @app.post('/api/onboarding/google/disconnect')
+    def disconnect(request: Request):
+        if request.headers.get('X-Orbit-UI')!='1':
+            raise GraphError(403,'ui_required','Disconnect requires the local Orbit UI.')
+        with google_auth.lock:
+            google_auth.vault.clear()
+            google_auth.states.clear()
+        return {'disconnected':['gmail','calendar']}
+
     @app.get('/api/onboarding/connections')
     def connections():
         return JSONResponse(connector_status(),headers={'Cache-Control':'no-store'})
