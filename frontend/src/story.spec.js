@@ -16,7 +16,7 @@ async function say(page,text){
  const response=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'Send message'}).click();const data=await(await response).json();
  expect(data.mode,JSON.stringify(data)).toBe('deterministic');expect(data.clarifications).toEqual([]);
- await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');await expect(page.locator('.message.assistant').last().locator('[data-streaming=true]')).toHaveCount(0,{timeout:20000});await expect(page.locator('.specialist-typing')).toHaveCount(0,{timeout:20000});console.log('TIMING',JSON.stringify({intents:data.intents,backend_ms:data.latency_ms,presentation_ms:Date.now()-start}));return data;
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');await expect(page.locator('.message.assistant').last().locator('.thinking-ring')).toHaveCount(0,{timeout:15000});await expect(page.locator('.message.assistant').last().locator('[data-streaming=true]')).toHaveCount(0,{timeout:20000});await expect(page.locator('.specialist-typing')).toHaveCount(0,{timeout:20000});console.log('TIMING',JSON.stringify({intents:data.intents,backend_ms:data.latency_ms,presentation_ms:Date.now()-start}));return data;
 }
 async function state(page,key){return page.evaluate(async key=>{const r=await fetch('http://127.0.0.1:8002/api/story/state',{headers:{'X-Orbit-Story':key||sessionStorage.getItem('orbit.story.workspace')}});return r.json();},key);}
 async function ready(page){await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();}
