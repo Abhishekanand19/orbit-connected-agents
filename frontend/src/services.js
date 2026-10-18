@@ -32,9 +32,9 @@ export const chatService = { connection: 'unconfigured', createMessage(content) 
 
 export const STORY_KEY='orbit.story.workspace';
 export function storyHeaders(){const id=localStorage.getItem('orbit.chat.mode')==='normal'?null:(sessionStorage.getItem(STORY_KEY)||localStorage.getItem(STORY_KEY));return id?{'X-Orbit-Story':id}:{};}
-const CHAT_API = import.meta.env?.VITE_ORBIT_API_URL || 'http://127.0.0.1:8001';
+const CHAT_API = (import.meta.env?.VITE_ORBIT_API_URL || 'http://127.0.0.1:8001').replace(/\/$/,'');
 export async function chatRequest(path, body) {
- const response=await fetch(CHAT_API+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json',...(path==='/api/story/workspaces'?{}:storyHeaders())},signal:AbortSignal.timeout(480000)});
+ const response=await fetch(CHAT_API+path,{...(body?{method:'POST',body:JSON.stringify(body)}:{}),headers:{'Content-Type':'application/json',...(path==='/api/story/workspaces'?{}:storyHeaders())},signal:AbortSignal.timeout(path==='/api/story/workspaces'?15000:480000)}).catch(error=>{throw Error(error.name==='TimeoutError'?'Workspace initialization timed out. Check the backend and retry.':'Cannot reach the Orbit API. Check the backend address and allowed frontend origin, then retry.');});
  const data=await response.json();if(!response.ok)throw Error(data.error?.message||'Chat request failed. Please retry.');return data;
 }
 export const messageFromApi = n=>({id:n.id,role:n.properties.role,content:n.properties.content,createdAt:n.created_at,attachments:n.properties.attachments?JSON.parse(n.properties.attachments):[],story:n.properties.story?JSON.parse(n.properties.story):null});
