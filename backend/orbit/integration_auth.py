@@ -160,17 +160,45 @@ def mount_auth(app):
     if not any(isinstance(f,CallbackLogFilter) for f in logger.filters):logger.addFilter(CallbackLogFilter())
 
     @app.get('/auth/google/connect')
-    def connect(write: bool=False):
+    def connect(request: Request, write: bool=False, onboarding: bool=False):
+        if onboarding:
+            saved=google_auth.vault.load() or {}
+            write=write or any(scope in saved.get('scope','').split() for scope in WRITE_SCOPES)
         url, browser = google_auth.begin(writes=write)
         response = RedirectResponse(url, status_code=303)
         response.set_cookie('orbit_google_state', browser, httponly=True, samesite='lax', max_age=600, path='/auth/google')
+        if onboarding:
+            # Only allow a configured frontend origin, never an arbitrary return URL.
+            from urllib.parse import urlsplit
+            parsed=urlsplit(request.headers.get('referer',''))
+            origin=parsed.scheme+'://'+parsed.netloc
+            allowed=app.state.service.repo.db.settings.allowed_origins
+            if origin in allowed:response.set_cookie('orbit_onboarding_return',origin+'/welcome?step=apps',httponly=True,samesite='lax',max_age=600,path='/auth/google')
+        else:response.delete_cookie('orbit_onboarding_return',path='/auth/google')
         response.headers['Cache-Control'] = 'no-store'
         return response
 
     @app.get('/auth/google/callback')
     def callback(request: Request):
-        google_auth.finish(request.query_params.get('state', ''), request.cookies.get('orbit_google_state'),
-                           request.query_params.get('code'), request.query_params.get('error'))
+        target=request.cookies.get('orbit_onboarding_return','')
+        allowed=app.state.service.repo.db.settings.allowed_origins
+        valid_target=target in [origin+'/welcome?step=apps' for origin in allowed]
+        try:
+            google_auth.finish(request.query_params.get('state', ''), request.cookies.get('orbit_google_state'),
+                               request.query_params.get('code'), request.query_params.get('error'))
+        except GraphError:
+            if not valid_target:raise
+            response=RedirectResponse(target+'&oauth=failed',status_code=303)
+            response.delete_cookie('orbit_google_state',path='/auth/google')
+            response.delete_cookie('orbit_onboarding_return',path='/auth/google')
+            response.headers.update({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+            return response
+        if valid_target:
+            response=RedirectResponse(target+'&oauth=connected',status_code=303)
+            response.delete_cookie('orbit_google_state',path='/auth/google')
+            response.delete_cookie('orbit_onboarding_return',path='/auth/google')
+            response.headers.update({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+            return response
         response = HTMLResponse('Google connected to ORBIT. You may close this tab and return to ORBIT.')
         response.delete_cookie('orbit_google_state', path='/auth/google')
         response.headers.update({'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'"})
