@@ -9,6 +9,7 @@ import {nodeLabel,relationLabel,type GraphData,type Selection,type ViewMode} fro
 const nodeTypes={entity:EntityNode},edgeTypes={relationship:RelationshipEdge};
 interface Props {graph:GraphData;root:string;mode:ViewMode;filter:string;selection:Selection;select:(s:Selection)=>void;collapsed:Set<string>;toggle:(id:string)=>void;compact?:boolean;}
 export default function GraphCanvas({graph,root,mode,filter,selection,select,collapsed,toggle,compact=false}:Props) {
+  const fitted=useRef(false);
   const previous=useRef(new Map<string,string>());
   const coordinates=useRef(new Map<string,{x:number;y:number}>());
   const layout=useMemo(()=>{const next=layoutGraph(graph,root,mode,filter,collapsed,compact,coordinates.current);for(const [id,p] of next.positions)coordinates.current.set(id,p);return next;},[graph,root,mode,filter,collapsed,compact]);
@@ -20,7 +21,7 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
       data:{entity:n,mode,compact,root:n.id===root,childCount:layout.tree.children.get(n.id)?.length||0,collapsed:collapsed.has(n.id),toggle:()=>toggle(n.id),highlight:false,fresh:previous.current.get(n.id)!==JSON.stringify(n.properties)}})));
     previous.current=new Map(layout.nodes.map(n=>[n.id,JSON.stringify(n.properties)]));
   },[layout,mode,root,collapsed,toggle,setNodes]);
-  useEffect(()=>{if(!instance) return;const frame=requestAnimationFrame(()=>instance.fitView({padding:.08,maxZoom:1.15,minZoom:.42,duration:250}));return()=>cancelAnimationFrame(frame);},[instance,layout]);
+  useEffect(()=>{if(!instance||fitted.current||!layout.nodes.length) return;fitted.current=true;const frame=requestAnimationFrame(()=>instance.fitView({padding:.08,maxZoom:1.15,minZoom:.42,duration:250}));return()=>cancelAnimationFrame(frame);},[instance,layout]);
   const painted=nodes.map(n=>({...n,selected:selection?.kind==='node'&&selection.id===n.id,data:{...n.data,highlight:layout.edges.some(e=>highlighted.has(e.id)&&(e.source===n.id||e.target===n.id))}}));
   const nodePositions=new Map(nodes.map(n=>[n.id,n.position]));
   const labelBoxes:{x:number;y:number;width:number;height:number}[]=[];
@@ -56,7 +57,7 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
       onInit={setInstance} onNodesChange={onNodesChange} onNodeDragStop={(_,n)=>coordinates.current.set(n.id,{...n.position})} onNodeClick={(_,n)=>select({kind:'node',id:n.id})}
       onEdgeClick={(_,e)=>select({kind:'edge',id:e.id})} onPaneClick={()=>select(null)}
       nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null} minZoom={.2} maxZoom={2.2}
-      fitView colorMode="light" onlyRenderVisibleElements={false}>
+      colorMode="light" onlyRenderVisibleElements={false}>
       <Background color="#d8e0e6" gap={28} size={.7}/><Controls showInteractive={false} fitViewOptions={{padding:.08,maxZoom:1.15}}/>
     </ReactFlow>
     {mode==='simple'&&edges.some(e=>e.data?.cross)&&<div className="simple-crosslinks" aria-label="Cross-links and shared connections"><span>SHARED CONNECTIONS</span><div>{edges.filter(e=>e.data?.cross).map(e=><button key={e.id} className="cross-link" data-edge-id={e.id} onClick={()=>select({kind:'edge',id:e.id})} title={`${e.data!.entity.type}: ${e.source} → ${e.target}`}><strong>{nodeLabel(graph.nodes.find(n=>n.id===e.source)!)}</strong><small>{relationLabel(e.data!.entity.type)} →</small><strong>{nodeLabel(graph.nodes.find(n=>n.id===e.target)!)}</strong></button>)}</div></div>}
