@@ -48,7 +48,10 @@ class StoryEngine:
             if saved[0][1:]!=[req.content,req.conversation_id,req.source]:raise GraphError(409,'turn_conflict','Message identity was already used for different input.')
             return json.loads(saved[0][0])
         state=self.state();slots=state['slots'];day=state['day'];before=state['graph']
-        parsed=parse(req.content,slots)
+        parse_slots=dict(slots)
+        if slots.get('pending_conversation') and slots['pending_conversation']!=req.conversation_id:
+            parse_slots.pop('pending_specialist',None);parse_slots.pop('required_slots',None);parse_slots.pop('awaiting_trip',None)
+        parsed=parse(req.content,parse_slots)
         self.s.upsert_node('chatbot:coordinator',NodeUpsert(type='Bot',properties={'name':'Orbit Coordinator'}))
         try:
             conversation=self.s.require(req.conversation_id,{E.Conversation})
@@ -57,7 +60,7 @@ class StoryEngine:
             if e.status!=404:raise
             self.s.create_conversation(ConversationCreate(id=req.conversation_id,bot_id='chatbot:coordinator',title='Family planning conversation'))
         user=self.s.create_message(req.conversation_id,MessageCreate(id=req.id,role='user',content=req.content))
-        handoffs=[];evidence=[];proposal_ids=[];prior=[];decision=None;checklist=[]
+        handoffs=[];evidence=[];proposal_ids=[];prior=[];decision=None;checklist=[];analysis=None
         if parsed['questions']:
             response=' '.join(parsed['questions'][:2])+' I have not changed the story facts.'
         else:
@@ -127,11 +130,11 @@ class StoryEngine:
                     if parent in slots:edge(PREFIX+parent,R.PARENT_OF,PREFIX+'priya',fact=parent)
             edge(PREFIX+'appointment',R.RELATED_TO,PREFIX+'hospital','User-reported hospital destination.',fact='destination')
             edge(PREFIX+'cab',R.RELATED_TO,PREFIX+'hospital','User-reported transport destination; not a booking confirmation.',fact='destination')
-            edge(PREFIX+'cab',R.DEPENDS_ON,PREFIX+'appointment','Scenario dependency: internal transport serves the hospital visit.')
+            if any(PREFIX+k not in {n['id'] for n in before['nodes']} for k in ('cab','appointment')):edge(PREFIX+'cab',R.DEPENDS_ON,PREFIX+'appointment','Scenario dependency: internal transport serves the hospital visit.')
             edge(PREFIX+'booking',R.DEPENDS_ON,PREFIX+'cab','Internal simulated booking follows the transport task.')
-            edge(PREFIX+'physio',R.DEPENDS_ON,PREFIX+'cab','Scenario dependency: travel timing may affect later physiotherapy.')
+            if any(PREFIX+k not in {n['id'] for n in before['nodes']} for k in ('physio','cab')):edge(PREFIX+'physio',R.DEPENDS_ON,PREFIX+'cab','Scenario dependency: travel timing may affect later physiotherapy.')
             edge(PREFIX+'deployment',R.ASSIGNED_TO,PREFIX+'aarav',fact='deployment_start')
-            edge(PREFIX+'deployment',R.RELATED_TO,PREFIX+'appointment','Same-day commitment; timing needs checking, not an established overlap.',fact='deployment_start')
+            if any(PREFIX+k not in {n['id'] for n in before['nodes']} for k in ('deployment','appointment')):edge(PREFIX+'deployment',R.RELATED_TO,PREFIX+'appointment','Same-day commitment; timing needs checking, not an established overlap.',fact='deployment_start')
             edge(PREFIX+'ramesh',R.PARTICIPATES_IN,PREFIX+'appointment')
             for person in ('meera','priya'):
                 if person+'_availability' in slots or person+'_unavailable_from' in slots or person+'_escort' in slots:
@@ -143,6 +146,8 @@ class StoryEngine:
             if 'family' in intents:lines.append('I’ve recorded '+', '.join(slots[n] for n in ('aarav','ramesh','priya','meera') if n in slots)+' and the family connections you introduced.')
             if 'schedule' in intents:lines.append('I’ve recorded the reported times on '+day+'. These are user reports, not provider-confirmed calendar changes.')
             if 'rumor' in intents:
+                from .story_sources import record_references
+                evidence.append(record_references(self.s,req.id,observed,[PREFIX+'appointment'] if slots.get('appointment_start') else subjects))
                 text='WAIT — the hospital closure is unverified. I will not cancel appointments or transport on that basis.' if slots['rumor']=='UNVERIFIED' else 'You reported that the closure rumor is false. Its previous claim remains in the evidence history.'
                 handoffs.append(('research',text));lines.append(text)
             if slots.get('appointment_start') and (intents & {'schedule','availability','video','coordination','recall'}):
@@ -155,17 +160,29 @@ class StoryEngine:
                         if e['type']=='DEPENDS_ON' and e['target']==current and e['source'] not in ns:
                             path={'entity_id':e['source'],'node_ids':ns+[e['source']],'edge_ids':es+[e['id']],'evidence_status':'USER_REPORTED'}
                             paths.append(path);queue.append((e['source'],path['node_ids'],path['edge_ids']))
+                # A same-day meeting is a timing dependency, not a proven overlap.
+                for e in graph['edges']:
+                    if e['type']=='RELATED_TO' and e['target']==PREFIX+'appointment' and e['source']==PREFIX+'deployment':
+                        paths.append({'entity_id':e['source'],'node_ids':[PREFIX+'appointment',e['source']],'edge_ids':[e['id']],'evidence_status':'USER_REPORTED'})
                 root=self.s.require(PREFIX+'appointment');when=root['properties']['starts_at'];clock=when[11:16]
                 candidates=[];constraints=[]
                 for n in graph['nodes']:
                     p=n['properties']
                     if n['type']=='Person' and p.get('escort')=='CONFIRMED' and p.get('available_from','00:00')<=clock and clock<p.get('unavailable_from','24:00'):candidates.append(n)
                     if n['type']=='Person' and p.get('unavailable_from','24:00')<=clock:constraints.append(n['properties']['name']+' is unavailable at the reported appointment time.')
-                if slots.get('deployment_start'):
+                if any(p['entity_id']==PREFIX+'deployment' for p in paths) and slots.get('deployment_start'):
                     if slots['deployment_start']>=clock and not slots.get('appointment_end'):constraints.append('Aarav’s deployment is at '+slots['deployment_start']+'; the appointment end time is missing, so overlap cannot be ruled out.')
                     elif slots.get('appointment_end','00:00')>slots['deployment_start']:constraints.append('The appointment overlaps Aarav’s deployment.')
+                timing_review=[]
+                by_id={n['id']:n['properties'] for n in graph['nodes']}
+                for path in paths:
+                    if path['entity_id'] not in (PREFIX+'deployment',PREFIX+'physio'):continue
+                    start=by_id[path['entity_id']].get('starts_at')
+                    end=root['properties'].get('ends_at')
+                    if start and start[:10]==when[:10] and (not end or end>start or path['entity_id']==PREFIX+'physio'):
+                        timing_review.append(path['entity_id'])
                 reason=('Travel is no longer required for the reported video visit.' if root['properties'].get('location')=='video' else ('A reported available escort can cover the visit.' if candidates else 'An escort still needs to confirm they can accompany Ramesh.'))
-                analysis={'id':stable(req.id+':decision'),'trigger_id':root['id'],'trigger_claim_id':slots.get('_claim_appointment_location') or slots['_claim_appointment_start'],'state':'ACT' if candidates or 'video' in intents else 'WAIT','reason':reason,'affected':paths,'alternatives':[],'constraints':constraints,'evidence':{id:'USER_REPORTED' for id in evidence},'truncated':graph['truncated']}
+                analysis={'id':stable(req.id+':decision'),'trigger_id':root['id'],'trigger_claim_id':slots.get('_claim_appointment_location') or slots['_claim_appointment_start'],'state':'ACT' if candidates or 'video' in intents else 'WAIT','reason':reason,'affected':paths,'timing_review':timing_review,'alternatives':[],'constraints':constraints,'evidence':{id:'USER_REPORTED' for id in evidence},'truncated':graph['truncated']}
                 prior_rows=self.db.execute("MATCH (a:Action)-[:PRODUCED]->(o:Outcome) WHERE a.status='VERIFIED' AND o.status='VERIFIED' RETURN DISTINCT properties(a),properties(o) LIMIT 20",read=True)
                 prior=[{'id':a['id'],'outcome_id':o['id'],'name':'Verified internal task change' if a.get('tool','').startswith('action_task') else a['name'],'retrieved_from':'FalkorDB'} for a,o in prior_rows]
                 recalled=self.db.execute("MATCH (d:Decision) WHERE d.record_kind='STORY_DECISION' AND d.conversation_id<>$conversation RETURN d.id,d.name ORDER BY d.created_at DESC LIMIT 3",{'conversation':req.conversation_id},read=True)
@@ -195,7 +212,11 @@ class StoryEngine:
                 from .story_checklist import ensure_checklist
                 checklist=ensure_checklist(self.s,req.id)
             # Presentation uses persisted current facts, never earlier response text.
-            response,handoffs=present(self.s,slots,old,changes,intents,handoffs,proposal_ids,prior)
+            response,handoffs=present(self.s,slots,old,changes,intents,handoffs,proposal_ids,prior,analysis)
+            if slots.get('awaiting_trip')=='yes':
+                slots['pending_specialist']='tasks';slots['required_slots']=[k for k in ('pickup','destination') if not slots.get(k)];slots['pending_conversation']=req.conversation_id
+            elif 'trip' in intents:
+                slots.pop('pending_specialist',None);slots.pop('required_slots',None);slots.pop('pending_conversation',None)
             self.db.execute('MATCH (s:OrbitStoryState {id:"story"}) SET s.slots=$slots',{'slots':json.dumps(slots)})
         messages=[]
         for index,(agent,text) in enumerate(handoffs):
@@ -212,13 +233,14 @@ class StoryEngine:
             for row in shared:self.s.repo.upsert_edge(finding,R.SUPPORTED_BY,row[1],{})
             for item in prior:self.s.repo.upsert_edge(finding,R.SUPPORTED_BY,item['id'],{})
             messages.append({'agent':agent,'name':LABELS[agent],'content':text,'run_id':run})
-        answer=self.s.create_message(req.conversation_id,MessageCreate(id=stable(req.id+':assistant'),role='assistant',content=response))
+        answer=self.s.create_message(req.conversation_id,MessageCreate(id=stable(req.id+':assistant'),role='assistant',content=response or LABELS[handoffs[0][0]]))
         self.db.execute('MATCH (s:OrbitStoryState {id:"story"}) SET s.revision=s.revision+1')
         after=self.snapshot();old_nodes={n['id']:n for n in before['nodes']};old_edges={e['id']:e for e in before['edges']}
         def delta(items,old):
             return {'added':[n['id'] for n in items if n['id'] not in old],'updated':[n['id'] for n in items if n['id'] in old and n['properties']!=old[n['id']]['properties']]}
         result={'user':user,'assistant':answer,'handoffs':messages,'graph_revision':state['graph_revision']+1,'entities':delta(after['nodes'],old_nodes),'relationships':delta(after['edges'],old_edges),'evidence':evidence,'decision_id':decision,'previous':prior,'action_ids':proposal_ids,'checklist':checklist,'graph':after,'mode':'deterministic','source':req.source,'intents':parsed['intents'],'clarifications':parsed['questions'],'latency_ms':round((time.perf_counter()-started)*1000,2)}
-        result['route_preview']=not parsed['questions'] and bool(parsed['facts'].get('cab_start')) and 'schedule' in parsed['intents']
+        result['direct_specialist']=bool(handoffs) and not response
+        result['route_preview']=not parsed['questions'] and 'trip' in parsed['intents'] and bool(slots.get('pickup') and slots.get('destination'))
         edge_ids={edge for path in analysis['affected'] for edge in path['edge_ids']} if decision else set()
         names={n['id']:n['properties'].get('name',n['id']) for n in after['nodes']}
         result['evidence_relationships']=[{'id':e['id'],'source':names[e['source']],'relationship':e['type'],'target':names[e['target']]} for e in after['edges'] if e['id'] in edge_ids]
