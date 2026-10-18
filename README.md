@@ -31,6 +31,16 @@ ORBIT is a multi-agent workspace where conversations become a persistent **Falko
 | **Actions with accountability** | Proposes actions, requires approval for writes and records outcomes with verification evidence. |
 | **Two graph views** | Explore the same stored relationships through an interactive network or a simplified flow. |
 
+### Five agents, one connected context
+
+| Agent | Role |
+|---|---|
+| **Coordinator** | Manages all agents and delegates work. |
+| **Planner** | Plans actions and keeps notes on connected commitments. |
+| **Researcher** | Finds information and checks source evidence. |
+| **Communication Assistant** | Handles message drafts and replies. |
+| **Task Manager** | Creates and tracks tasks. |
+
 ## The architecture
 
 ![ORBIT system architecture](docs/images/orbit-architecture.png)
@@ -54,7 +64,7 @@ LIMIT $limit
 
 That means the Planner's visible warnings are selected from **actual traversal paths**, not simply from prewritten mentions of existing entities.
 
-[Graph queries](backend/orbit/repository.py) · [Impact analysis](backend/orbit/intelligence.py) · [Counterfactual tests](tests/orbit/test_part5_paths.py)
+[Graph queries](backend/orbit/repository.py) · [Graph-dependent Planner output](backend/orbit/story_words.py) · [Counterfactual tests](tests/orbit/test_part5_paths.py)
 
 ## See it in action
 
@@ -90,7 +100,19 @@ cd ..
 .\start-demo.ps1
 ```
 
-Open **http://127.0.0.1:5173**. Backend API docs: **http://127.0.0.1:8001/docs**. Docker must be running. The script uses an isolated persistent demo graph; real integrations and normal Gemini mode require their own credentials.
+Open **http://127.0.0.1:5173**. Backend API docs: **http://127.0.0.1:8001/docs**. Docker must be running; `start-demo.ps1` starts FalkorDB and the local application using an isolated persistent demo graph.
+
+**Optional environment configuration:** For normal Gemini conversations and real integrations, create a `.env` file at the repository root (never commit credentials):
+
+```dotenv
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+SLACK_BOT_TOKEN=your_slack_bot_token
+```
+
+Configure the Google OAuth redirect URI as `http://127.0.0.1:8001/auth/google/callback`. Request Google scopes through ORBIT's authorization flow; write operations require explicit approval. These credentials are **not required** for the deterministic family-demo workflow.
 
 Test the graph-dependent decisions:
 
