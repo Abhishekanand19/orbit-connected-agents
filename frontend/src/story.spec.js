@@ -11,11 +11,12 @@ const inputs=[
  "Hey buddy, remember Dad's hospital appointment? The hospital now says he can attend Monday's 1:45 PM appointment over video. What changes in our plan?"
 ];
 async function say(page,text){
+ const start=Date.now();
  await page.getByRole('textbox',{name:'Message',exact:true}).fill(text);
  const response=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'Send message'}).click();const data=await(await response).json();
  expect(data.mode,JSON.stringify(data)).toBe('deterministic');expect(data.clarifications).toEqual([]);
- await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');return data;
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');await expect(page.locator('.specialist-typing')).toHaveCount(0);console.log('TIMING',JSON.stringify({intents:data.intents,backend_ms:data.latency_ms,presentation_ms:Date.now()-start}));return data;
 }
 async function state(page,key){return page.evaluate(async key=>{const r=await fetch('http://127.0.0.1:8002/api/story/state',{headers:{'X-Orbit-Story':key||sessionStorage.getItem('orbit.story.workspace')}});return r.json();},key);}
 async function ready(page){await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();}
@@ -23,13 +24,14 @@ async function ready(page){await expect(page.getByRole('heading',{name:'Coordina
 test('seven-part story, New Chat memory, checklist and two hard-refresh regressions',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await ready(page);expect((await state(page)).graph.nodes).toEqual([]);
- let first;for(let i=0;i<7;i++){const r=await say(page,inputs[i]);if(i===1){
-   const preview=page.locator('.message.user').last().getByRole('button',{name:'Enlarge route preview'});await expect(preview).toBeVisible();
+ let first;for(let i=0;i<7;i++){if(i===6)await page.evaluate(()=>{window.reveals=[];const seen=new WeakSet();window.observer=new MutationObserver(()=>{document.querySelectorAll('.inline-handoff').forEach(e=>{if(!seen.has(e)){seen.add(e);window.reveals.push(performance.now());}});});document.querySelectorAll('.inline-handoff').forEach(e=>seen.add(e));window.observer.observe(document.querySelector('[role=log]'),{childList:true,subtree:true});});const r=await say(page,inputs[i]);if(i===6){const times=await page.evaluate(()=>{window.observer.disconnect();return window.reveals;});expect(times).toHaveLength(3);expect(times[1]-times[0]).toBeGreaterThan(200);expect(times[2]-times[1]).toBeGreaterThan(200);console.log('HANDOFF_GAPS_MS',times[1]-times[0],times[2]-times[1]);}if(i===1){await expect(page.locator('.route-preview')).toHaveCount(0);await expect(page.getByRole('log')).toContainText('1. Where should the cab pick you up?');}if(i===2){
+   const preview=page.locator('.message.assistant').last().getByRole('button',{name:'Enlarge route preview'});await expect(preview).toBeVisible();
    await preview.click();await expect(page.getByRole('dialog',{name:'Enlarged route preview'})).toBeVisible();
    await page.screenshot({path:info.outputPath('route-enlarged.png')});await page.getByRole('button',{name:'Close preview'}).click();
   }
+  if(i===4){await expect(page.locator('.research-citations a')).toHaveCount(2);await expect(page.locator('.research-citations a').first()).toHaveAttribute('href',/10924808\/$/);}
   if(i===2){
-   expect(r.graph.nodes.find(n=>n.id==='story:hospital').properties.name).toBe('Manipal Hospital, Jayanagar');
+   expect(r.direct_specialist).toBe(true);await expect(page.locator('.message.assistant').last().locator('.handoff-label')).toHaveCount(0);await expect(page.locator('.route-preview')).toHaveCount(1);expect(r.graph.nodes.find(n=>n.id==='story:hospital').properties.name).toBe('Manipal Hospital, Jayanagar');
    await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
    const panel=page.getByRole('region',{name:'Graph exploration workspace'});
    await expect(panel.getByTestId('graph-canvas')).toContainText('Manipal Hospital, Jayanagar');
@@ -37,7 +39,7 @@ test('seven-part story, New Chat memory, checklist and two hard-refresh regressi
    await panel.getByRole('button',{name:'Simple View',exact:true}).click();
    await expect(panel.getByTestId('simple-explanation')).toContainText('Manipal Hospital, Jayanagar');
    await page.screenshot({path:info.outputPath('hospital-simple.png')});
-   await page.keyboard.press('Escape');
+   await panel.getByRole('button',{name:'Close graph workspace'}).click();
   }
   if(i===0){first=r;expect(r.graph.nodes.filter(n=>n.type==='Person')).toHaveLength(3);}}
  await expect(page.getByRole('log')).toContainText("What's Priya's email address?");
@@ -78,7 +80,7 @@ test('workspace menu repeats existing onboarding without revoking connectors',as
  for(let i=0;i<2;i++){
   await page.getByRole('button',{name:'Abhishek Anand workspace menu'}).click();
   await page.getByRole('menuitem',{name:'Restart onboarding'}).click();
-  await expect(page.getByRole('heading',{name:'Welcome to Orbit.',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Sign in — Orbit demo',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Next',exact:true}).click();
   await page.getByRole('button',{name:'Continue to Orbit',exact:true}).click();await ready(page);
  }
