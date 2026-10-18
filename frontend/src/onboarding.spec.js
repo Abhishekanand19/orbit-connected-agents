@@ -5,7 +5,7 @@ const welcome=page=>expect(page.getByRole('heading',{name:'Sign in — Orbit dem
 test('exact reference, private editable input, seven preview switches and three navigation cycles',async({page},info)=>{
  const requests=[];page.on('request',r=>requests.push({url:r.url(),body:r.postData()||''}));
  for(let round=0;round<3;round++){
-  await page.goto('/welcome');if(round===1)await page.reload();await welcome(page);
+  await page.goto('/welcome');if(round===1)await page.reload();await welcome(page);await expect(page.getByText('ORBIT onboarding demo · Not Google sign-in. Nothing you type is saved or sent.')).toHaveCount(0);await expect(page.getByText('Demo preview · No Google authentication')).toBeVisible();
   await expect(page.locator('.signin-reference>img')).toHaveAttribute('src','/brand/signin-reference.png');
   const input=page.getByRole('textbox',{name:'Email or phone'});await input.fill('private-demo@example.test');await input.press('Backspace');await expect(input).toHaveValue('private-demo@example.tes');await input.fill('private-demo@example.test');
   if(!round)await page.screenshot({path:info.outputPath('signin-reference.png')});
@@ -31,7 +31,7 @@ test('workspace creation recovers without reload after a genuine network failure
 });
 
 test('mobile reference and preview controls remain editable without horizontal overflow',async({page},info)=>{
- await page.setViewportSize({width:390,height:844});await page.goto('/welcome');await welcome(page);await page.getByRole('textbox',{name:'Email or phone'}).fill('Demo');await page.screenshot({path:info.outputPath('signin-mobile.png')});
+ await page.setViewportSize({width:390,height:844});await page.goto('/welcome');await welcome(page);await expect(page.getByText('ORBIT onboarding demo · Not Google sign-in. Nothing you type is saved or sent.')).toHaveCount(0);await expect(page.getByText('Demo preview · No Google authentication')).toBeVisible();await page.getByRole('textbox',{name:'Email or phone'}).fill('Demo');await page.screenshot({path:info.outputPath('signin-mobile.png')});
  await page.getByRole('button',{name:'Next',exact:true}).click();await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.getByRole('switch',{name:'Microsoft Teams preview connection'}).click();await expect(page.getByRole('switch',{name:'Microsoft Teams preview connection'})).toBeChecked();
 });
 
