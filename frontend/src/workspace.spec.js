@@ -69,3 +69,16 @@ test('all five agents stream formatted responses without provider calls',async({
  }
  await page.screenshot({path:info.outputPath('formatted-agent-response.png')});
 });
+
+
+test('living avatars and cancellable response pacing',async({page},info)=>{
+ await ready(page);
+ const animations=await page.locator('.bot-list .avatar').evaluateAll(es=>es.map(e=>getComputedStyle(e).animationName));expect(animations).toHaveLength(5);expect(animations.every(a=>a.includes('avatar-idle'))).toBe(true);
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill(family);
+ const start=Date.now();await page.getByRole('button',{name:'Send message'}).click();await expect(page.locator('.thinking-ring')).toHaveCount(1);
+ await page.screenshot({path:info.outputPath('thinking.png')});
+ await expect(page.locator('.message.assistant [data-streaming=true]')).toBeVisible();const delay=Date.now()-start;console.log('FIRST_RESPONSE_MS',delay);expect(delay).toBeGreaterThanOrEqual(2000);expect(delay).toBeLessThan(3500);
+ await expect(page.locator('.thinking-ring')).toHaveCount(0);await expect(page.locator('[data-streaming=true]')).toHaveCount(0);await expect(page.locator('.message.assistant')).toHaveCount(1);
+ await page.screenshot({path:info.outputPath('idle.png')});
+ await page.emulateMedia({reducedMotion:'reduce'});expect(await page.locator('.bot-list .avatar').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
+});
