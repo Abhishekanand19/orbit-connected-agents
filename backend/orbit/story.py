@@ -78,7 +78,7 @@ class StoryEngine:
                 self.s.upsert_node(source_id,NodeUpsert(type='Source',properties={'name':changes.get('rumor_source','User report · '+req.source),'kind':'USER_MESSAGE','observed_at':observed}))
             for name in ('aarav','ramesh','priya','meera'):
                 if name in slots:self.s.upsert_node(PREFIX+name,NodeUpsert(type='Person',properties={'name':slots[name]}))
-            for key,label,kind in [('appointment','Hospital follow-up','Event'),('cab','Internal simulated cab arrangement','Task'),('physio','Physiotherapy','Task'),('deployment','Work deployment','Task')]:
+            for key,label,kind in [('appointment','Hospital appointment','Event'),('cab','Internal simulated cab arrangement','Task'),('physio','Physiotherapy','Task'),('deployment','Work deployment','Task')]:
                 if key+'_start' not in slots:continue
                 if key=='deployment':label=slots.get('deployment_label',label)
                 props={'name':label,'starts_at':self.at(slots[key+'_start'],day)}
@@ -98,6 +98,8 @@ class StoryEngine:
                 self.s.upsert_node(PREFIX+'booking',NodeUpsert(type='Booking',properties={'name':'Original cab reference · simulation only','reference':'INTERNAL-SIMULATION','starts_at':self.at(slots['cab_start'],day)}))
             if slots.get('cab_start'):
                 self.s.repo.upsert_node(PREFIX+'cab',E.Task,{k:slots[k] for k in ('pickup','destination') if k in slots})
+            if slots.get('destination'):
+                self.s.repo.upsert_node(PREFIX+'hospital',E.Source,{'name':slots['destination'],'kind':'USER_MESSAGE','record_kind':'STORY_HOSPITAL','evidence_status':'USER_REPORTED'})
             subjects=[PREFIX+n for n in ('aarav','ramesh','priya','meera') if n in slots]+[PREFIX+k for k in ('appointment','cab','physio','deployment') if k+'_start' in slots]
             for key,value in changes.items():
                 if key in ('focus','person_focus','day_offset') or not subjects:continue
@@ -123,6 +125,8 @@ class StoryEngine:
             if 'aarav' not in slots and 'priya' in slots:
                 for parent in ('ramesh','meera'):
                     if parent in slots:edge(PREFIX+parent,R.PARENT_OF,PREFIX+'priya',fact=parent)
+            edge(PREFIX+'appointment',R.RELATED_TO,PREFIX+'hospital','User-reported hospital destination.',fact='destination')
+            edge(PREFIX+'cab',R.RELATED_TO,PREFIX+'hospital','User-reported transport destination; not a booking confirmation.',fact='destination')
             edge(PREFIX+'cab',R.DEPENDS_ON,PREFIX+'appointment','Scenario dependency: internal transport serves the hospital visit.')
             edge(PREFIX+'booking',R.DEPENDS_ON,PREFIX+'cab','Internal simulated booking follows the transport task.')
             edge(PREFIX+'physio',R.DEPENDS_ON,PREFIX+'cab','Scenario dependency: travel timing may affect later physiotherapy.')
@@ -214,6 +218,7 @@ class StoryEngine:
         def delta(items,old):
             return {'added':[n['id'] for n in items if n['id'] not in old],'updated':[n['id'] for n in items if n['id'] in old and n['properties']!=old[n['id']]['properties']]}
         result={'user':user,'assistant':answer,'handoffs':messages,'graph_revision':state['graph_revision']+1,'entities':delta(after['nodes'],old_nodes),'relationships':delta(after['edges'],old_edges),'evidence':evidence,'decision_id':decision,'previous':prior,'action_ids':proposal_ids,'checklist':checklist,'graph':after,'mode':'deterministic','source':req.source,'intents':parsed['intents'],'clarifications':parsed['questions'],'latency_ms':round((time.perf_counter()-started)*1000,2)}
+        result['route_preview']=not parsed['questions'] and bool(parsed['facts'].get('cab_start')) and 'schedule' in parsed['intents']
         edge_ids={edge for path in analysis['affected'] for edge in path['edge_ids']} if decision else set()
         names={n['id']:n['properties'].get('name',n['id']) for n in after['nodes']}
         result['evidence_relationships']=[{'id':e['id'],'source':names[e['source']],'relationship':e['type'],'target':names[e['target']]} for e in after['edges'] if e['id'] in edge_ids]
