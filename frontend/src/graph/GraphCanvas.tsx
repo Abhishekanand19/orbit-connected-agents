@@ -20,11 +20,11 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
       data:{entity:n,mode,compact,root:n.id===root,childCount:layout.tree.children.get(n.id)?.length||0,collapsed:collapsed.has(n.id),toggle:()=>toggle(n.id),highlight:false,fresh:previous.current.get(n.id)!==JSON.stringify(n.properties)}})));
     previous.current=new Map(layout.nodes.map(n=>[n.id,JSON.stringify(n.properties)]));
   },[layout,mode,root,collapsed,toggle,setNodes]);
-  useEffect(()=>{if(!instance) return;const frame=requestAnimationFrame(()=>instance.fitView({padding:.2,maxZoom:1,minZoom:.25,duration:250}));return()=>cancelAnimationFrame(frame);},[instance,layout]);
+  useEffect(()=>{if(!instance) return;const frame=requestAnimationFrame(()=>instance.fitView({padding:.08,maxZoom:1.15,minZoom:.42,duration:250}));return()=>cancelAnimationFrame(frame);},[instance,layout]);
   const painted=nodes.map(n=>({...n,selected:selection?.kind==='node'&&selection.id===n.id,data:{...n.data,highlight:layout.edges.some(e=>highlighted.has(e.id)&&(e.source===n.id||e.target===n.id))}}));
   const nodePositions=new Map(nodes.map(n=>[n.id,n.position]));
   const labelBoxes:{x:number;y:number;width:number;height:number}[]=[];
-  const nodeBoxes=nodes.map(n=>({x:n.position.x+layout.width/2,y:n.position.y+layout.height/2,width:layout.width+80,height:layout.height+80}));
+  const nodeBoxes=nodes.map(n=>({x:n.position.x+layout.width/2,y:n.position.y+layout.height/2,width:layout.width+18,height:layout.height+18}));
   const overlaps=(a:{x:number;y:number;width:number;height:number},b:typeof a)=>Math.abs(a.x-b.x)<(a.width+b.width)/2&&Math.abs(a.y-b.y)<(a.height+b.height)/2;
   const edges:RelationshipFlowEdge[]=layout.edges.map((edge,i)=>{
     const source=nodePositions.get(edge.source)||layout.positions.get(edge.source)!, target=nodePositions.get(edge.target)||layout.positions.get(edge.target)!;
@@ -42,7 +42,7 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
     const anchor={x:Math.abs(sp.y-tp.y)<2?(sp.x+tp.x)/2:lx,y:Math.abs(sp.y-tp.y)<2?sp.y-(45+(i%3)*22)*.75:ly};
     let labelOffset={x:0,y:0};
     if(mode==='network'&&edge.source!==edge.target){
-      const width=Math.max(90,edge.type.length*9+15),height=28;
+      const width=Math.max(90,edge.type.length*8+15),height=28;
       const candidates=[0,-45,45,-90,90,-135,135,-180,180].flatMap(y=>[0,-80,80,-160,160,-240,240].map(x=>({x,y})));
       labelOffset=candidates.find(o=>!labelBoxes.concat(nodeBoxes).some(b=>overlaps({x:anchor.x+o.x,y:anchor.y+o.y,width,height},b)))||{x:0,y:(i%3-1)*40};
       labelBoxes.push({x:anchor.x+labelOffset.x,y:anchor.y+labelOffset.y,width,height});
@@ -57,7 +57,7 @@ export default function GraphCanvas({graph,root,mode,filter,selection,select,col
       onEdgeClick={(_,e)=>select({kind:'edge',id:e.id})} onPaneClick={()=>select(null)}
       nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null} minZoom={.2} maxZoom={2.2}
       fitView colorMode="light" onlyRenderVisibleElements={false}>
-      <Background color="#d8e0e6" gap={28} size={.7}/><Controls showInteractive={false} fitViewOptions={{padding:.18,maxZoom:1}}/>
+      <Background color="#d8e0e6" gap={28} size={.7}/><Controls showInteractive={false} fitViewOptions={{padding:.08,maxZoom:1.15}}/>
     </ReactFlow>
     {mode==='simple'&&edges.some(e=>e.data?.cross)&&<div className="simple-crosslinks" aria-label="Cross-links and shared connections"><span>SHARED CONNECTIONS</span><div>{edges.filter(e=>e.data?.cross).map(e=><button key={e.id} className="cross-link" data-edge-id={e.id} onClick={()=>select({kind:'edge',id:e.id})} title={`${e.data!.entity.type}: ${e.source} → ${e.target}`}><strong>{nodeLabel(graph.nodes.find(n=>n.id===e.source)!)}</strong><small>{relationLabel(e.data!.entity.type)} →</small><strong>{nodeLabel(graph.nodes.find(n=>n.id===e.target)!)}</strong></button>)}</div></div>}
     <div className="canvas-guide">{mode==='simple'?'Branches organize the view. Arrows preserve stored direction.':'Drag nodes to arrange · Drag the canvas to pan · Scroll to zoom'}</div>
