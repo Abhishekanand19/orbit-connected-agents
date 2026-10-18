@@ -23,16 +23,24 @@ def test_final_seven_parts(story):
     assert not any(n['type'] in ('Event','Booking') for n in first['graph']['nodes'])
     assert turn(s,INTRO,id='intro')==first
     trip=turn(s,TRIP);assert 'Where should the cab pick you up?' in trip['handoffs'][0]['content']
-    assert trip['route_preview']
+    assert not trip['route_preview']
+    assert '1. Where' in trip['handoffs'][0]['content']
+    assert StoryEngine(s).state()['slots']['pending_specialist']=='tasks'
     route=turn(s,ROUTE);assert 'Uber booking pending' in route['handoffs'][0]['content']
     assert s.require('story:cab')['properties']['pickup']=='PES University, Bengaluru'
     assert story.require('story:hospital')['properties']['name']=='Manipal Hospital, Jayanagar'
     assert story.require('story:appointment')['properties']['location']=='Manipal Hospital, Jayanagar'
     assert story.require('story:cab')['properties']['destination']=='Manipal Hospital, Jayanagar'
-    assert '[✓] Destination: Manipal Hospital, Jayanagar' in route['handoffs'][0]['content']
-    assert not route['route_preview']
+    assert route['direct_specialist']
+    assert 'Got the trip details!' in route['handoffs'][0]['content']
+    assert route['route_preview']
     commit=turn(s,COMMIT);assert '12:30 PM' in commit['handoffs'][0]['content']
-    rumor=turn(s,RUMOR);assert 'not been independently confirmed' in rumor['handoffs'][0]['content']
+    rumor=turn(s,RUMOR);assert 'not independently confirmed' in rumor['handoffs'][0]['content']
+    assert '10924808/' in rumor['handoffs'][0]['content']
+    assert story.require('story:indian-express:article')['properties']['publisher']=='The Indian Express'
+    assert story.require('story:indian-express:article')['properties']['retrieval_status']=='NOT_RETRIEVED'
+    sourced=[n for n in rumor['graph']['nodes'] if n['properties'].get('source_id')=='story:indian-express:article']
+    assert sourced and all(n['properties']['status']=='UNVERIFIED' for n in sourced)
     assert rumor['handoffs'][0]['content'].endswith("Manipal Hospital, Jayanagar's closure remains unverified.")
     moved=turn(s,MOVE);assert s.require('story:appointment')['properties']['starts_at'][11:16]=='13:45'
     assert any(len(p['node_ids'])>=3 for p in json.loads(s.require(moved['decision_id'])['properties']['analysis'])['affected'])
@@ -83,3 +91,19 @@ def test_missing_appointment_is_not_presented_as_confirmed(story,text):
     result=turn(story,text)
     assert 'What day and time' in result['assistant']['properties']['content']
     assert not result['action_ids']
+
+@pytest.mark.parametrize('name',['Manipal hospital jaynagar','Manipal Hospital Jayanagar','Manipal Hospital, Jayanagar'])
+def test_canonical_hospital(name):
+    result=parse('From PES University, Bengaluru, to '+name,{'awaiting_trip':'yes'})
+    assert result['facts']['destination']=='Manipal Hospital, Jayanagar'
+
+
+def test_pending_specialist_accepts_partial_slots(story):
+    turn(story,INTRO);turn(story,TRIP)
+    pickup=turn(story,'Pick us up at PES University, Bengaluru.')
+    assert pickup['direct_specialist'] and not pickup['route_preview']
+    assert StoryEngine(story).state()['slots']['required_slots']==['destination']
+    destination=turn(story,'Destination is Manipal hospital jaynagar.')
+    assert destination['direct_specialist'] and destination['route_preview']
+    assert 'pending_specialist' not in StoryEngine(story).state()['slots']
+    assert story.require('story:cab')['properties']['starts_at'][11:16]=='09:45'
