@@ -35,7 +35,7 @@ ORBIT is a multi-agent workspace where conversations become a persistent **Falko
 
 ![ORBIT system architecture](docs/images/orbit-architecture.png)
 
-**React 19 + Vite** power the workspace; **FastAPI + Pydantic** handle orchestration and graph operations; **FalkorDB** stores connected memory and provenance. **React Flow + Dagre** render the graph. **Gemini** powers normal AI mode, while **MCP** connects supported external services.
+**React 19 + Vite** power the workspace; **FastAPI + Pydantic** handle orchestration and graph operations; **FalkorDB** stores connected memory and provenance. **React Flow + Dagre** render the graph. **Google Gemini** is integrated as the LLM for normal AI conversations and agent workflows, while **MCP** connects supported external services.
 
 ## FalkorDB does the reasoning—not just the visualization
 
@@ -100,7 +100,7 @@ Test the graph-dependent decisions:
 
 ## Demo transparency
 
-The seven-part family story uses **deterministic response templates** for a reproducible presentation. Graph persistence, traversal, dependency-based warning selection and evidence paths still operate on **FalkorDB**. Normal AI mode uses Gemini. Cab arrangements shown in the story are internal simulations, **not confirmed Uber bookings**; visual onboarding toggles do not establish real provider authorization.
+**Google Gemini** is ORBIT’s integrated LLM for normal AI conversations and agent workflows. The recorded seven-part walkthrough uses reproducible, templated dialogue; its memory updates, multi-hop traversal, graph-dependent decisions and evidence paths execute against **FalkorDB** without live Gemini calls during that walkthrough. Cab arrangements in the story are simulations, **not confirmed Uber bookings**; visual onboarding toggles do not establish real provider authorization.
 
 **Built by [Abhishek Anand](https://github.com/Abhishekanand19) — solo submission.** AI coding assistants supported development, testing and documentation; project direction, integration decisions and final verification were developer-led.
 
