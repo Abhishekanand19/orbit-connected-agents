@@ -50,12 +50,16 @@ def create_app(settings: Settings | None = None):
     app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
     from .integration_auth import mount_auth
     mount_auth(app)
+    from .onboarding import mount_onboarding
+    mount_onboarding(app)
     from .action_api import mount_actions
     mount_actions(app,settings)
     from .receipts import mount_receipts
     mount_receipts(app)
     from .story_api import mount_story,request_service
     mount_story(app,settings)
+    from .attachments import mount_attachments
+    mount_attachments(app)
     from .demo import mount_demo
     mount_demo(app)
     app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
