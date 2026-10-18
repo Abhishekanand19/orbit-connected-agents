@@ -9,7 +9,7 @@ export function planProjection(graph:GraphData,scope='plan'):GraphData {
   if(scope==='evidence')return ['Claim','Source','Decision','Event'].includes(n.type)&&!['AGENT_FINDING'].includes(String(n.properties.record_kind))&&n.properties.status!=='SUPERSEDED';
   if(n.type==='Decision')return n.id===latest;
   if(n.type==='Claim')return n.properties.slot==='rumor'&&n.properties.status!=='SUPERSEDED';
-  return ['Person','Event','Booking','Action','Outcome'].includes(n.type)||n.type==='Task'&&(!n.properties.record_kind||n.properties.record_kind==='STORY_CHECKLIST');
+  return n.properties.record_kind==='STORY_HOSPITAL'||['Person','Event','Booking','Action','Outcome'].includes(n.type)||n.type==='Task'&&(!n.properties.record_kind||n.properties.record_kind==='STORY_CHECKLIST');
  });
  const ids=new Set(nodes.map(n=>n.id));
  return {...graph,nodes,edges:graph.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)),paths:[]};
