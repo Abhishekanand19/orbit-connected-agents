@@ -57,7 +57,7 @@ class StoryEngine:
             if e.status!=404:raise
             self.s.create_conversation(ConversationCreate(id=req.conversation_id,bot_id='chatbot:coordinator',title='Family planning conversation'))
         user=self.s.create_message(req.conversation_id,MessageCreate(id=req.id,role='user',content=req.content))
-        handoffs=[];evidence=[];proposal_ids=[];prior=[];decision=None
+        handoffs=[];evidence=[];proposal_ids=[];prior=[];decision=None;checklist=[]
         if parsed['questions']:
             response=' '.join(parsed['questions'][:2])+' I have not changed the story facts.'
         else:
@@ -66,17 +66,21 @@ class StoryEngine:
             if 'day_offset' in changes and not old.get('appointment_start'):
                 day=(datetime.fromisoformat(day)+timedelta(days=int(changes['day_offset']))).date().isoformat()
                 self.db.execute('MATCH (s:OrbitStoryState {id:"story"}) SET s.day=$day',{'day':day})
+            if changes.get('weekday')=='Monday' and not old.get('appointment_start'):
+                date=datetime.fromisoformat(day);day=(date+timedelta(days=(0-date.weekday())%7)).date().isoformat()
+                self.db.execute('MATCH (s:OrbitStoryState {id:"story"}) SET s.day=$day',{'day':day})
             # Anchor observed times, never an invented travel duration.
             for key in ('appointment','cab'):
                 if key+'_start' in changes and key+'_anchor' not in slots:slots[key+'_anchor']=changes[key+'_start']
             source_id=stable(req.id+':source')
             observed=datetime.fromtimestamp(user['created_at']/1000).astimezone().isoformat()
             if changes:
-                self.s.upsert_node(source_id,NodeUpsert(type='Source',properties={'name':'User report · '+req.source,'kind':'USER_MESSAGE','observed_at':observed}))
+                self.s.upsert_node(source_id,NodeUpsert(type='Source',properties={'name':changes.get('rumor_source','User report · '+req.source),'kind':'USER_MESSAGE','observed_at':observed}))
             for name in ('aarav','ramesh','priya','meera'):
                 if name in slots:self.s.upsert_node(PREFIX+name,NodeUpsert(type='Person',properties={'name':slots[name]}))
             for key,label,kind in [('appointment','Hospital follow-up','Event'),('cab','Internal simulated cab arrangement','Task'),('physio','Physiotherapy','Task'),('deployment','Work deployment','Task')]:
                 if key+'_start' not in slots:continue
+                if key=='deployment':label=slots.get('deployment_label',label)
                 props={'name':label,'starts_at':self.at(slots[key+'_start'],day)}
                 if key+'_end' in slots:props['ends_at']=self.at(slots[key+'_end'],day)
                 if key=='appointment':props['location']=slots.get('appointment_location','hospital')
@@ -92,11 +96,13 @@ class StoryEngine:
                 self.s.upsert_node(PREFIX+key,NodeUpsert(type=kind,properties=props))
             if slots.get('cab_start'):
                 self.s.upsert_node(PREFIX+'booking',NodeUpsert(type='Booking',properties={'name':'Original cab reference · simulation only','reference':'INTERNAL-SIMULATION','starts_at':self.at(slots['cab_start'],day)}))
+            if slots.get('cab_start'):
+                self.s.repo.upsert_node(PREFIX+'cab',E.Task,{k:slots[k] for k in ('pickup','destination') if k in slots})
             subjects=[PREFIX+n for n in ('aarav','ramesh','priya','meera') if n in slots]+[PREFIX+k for k in ('appointment','cab','physio','deployment') if k+'_start' in slots]
             for key,value in changes.items():
                 if key in ('focus','person_focus','day_offset') or not subjects:continue
                 claim=stable(req.id+':fact:'+key);previous=slots.get('_claim_'+key)
-                status=slots['rumor'] if key=='rumor' else 'CONFIRMED'
+                status=slots[key] if key in ('rumor','protest') else 'CONFIRMED'
                 entity=key.split('_')[0]
                 specific=[PREFIX+entity] if PREFIX+entity in subjects else ([PREFIX+'appointment'] if PREFIX+'appointment' in subjects else subjects)
                 self.s.create_claim(ClaimCreate(id=claim,text=f'{key}: {value} (user-reported; not independently verified)',status=status,source_id=source_id,message_id=req.id,subject_ids=specific,observed_at=observed,supersedes_id=previous))
@@ -114,10 +120,14 @@ class StoryEngine:
                 for parent in ('ramesh','meera'):
                     if parent in slots:edge(PREFIX+parent,R.PARENT_OF,PREFIX+'aarav',fact=parent)
                 if 'priya' in slots:edge(PREFIX+'aarav',R.SIBLING_OF,PREFIX+'priya',fact='priya')
+            if 'aarav' not in slots and 'priya' in slots:
+                for parent in ('ramesh','meera'):
+                    if parent in slots:edge(PREFIX+parent,R.PARENT_OF,PREFIX+'priya',fact=parent)
             edge(PREFIX+'cab',R.DEPENDS_ON,PREFIX+'appointment','Scenario dependency: internal transport serves the hospital visit.')
             edge(PREFIX+'booking',R.DEPENDS_ON,PREFIX+'cab','Internal simulated booking follows the transport task.')
             edge(PREFIX+'physio',R.DEPENDS_ON,PREFIX+'cab','Scenario dependency: travel timing may affect later physiotherapy.')
             edge(PREFIX+'deployment',R.ASSIGNED_TO,PREFIX+'aarav',fact='deployment_start')
+            edge(PREFIX+'deployment',R.RELATED_TO,PREFIX+'appointment','Same-day commitment; timing needs checking, not an established overlap.',fact='deployment_start')
             edge(PREFIX+'ramesh',R.PARTICIPATES_IN,PREFIX+'appointment')
             for person in ('meera','priya'):
                 if person+'_availability' in slots or person+'_unavailable_from' in slots or person+'_escort' in slots:
@@ -132,7 +142,7 @@ class StoryEngine:
                 text='WAIT — the hospital closure is unverified. I will not cancel appointments or transport on that basis.' if slots['rumor']=='UNVERIFIED' else 'You reported that the closure rumor is false. Its previous claim remains in the evidence history.'
                 handoffs.append(('research',text));lines.append(text)
             if slots.get('appointment_start') and (intents & {'schedule','availability','video','coordination','recall'}):
-                graph=self.s.repo.traverse(TraversalRequest(root_id=PREFIX+'appointment',hops=4,relationship_types=[R.DEPENDS_ON,R.AVAILABLE_FOR,R.ASSIGNED_TO,R.PARTICIPATES_IN],limit=100))
+                graph=self.s.repo.traverse(TraversalRequest(root_id=PREFIX+'appointment',hops=4,relationship_types=[R.DEPENDS_ON,R.AVAILABLE_FOR,R.ASSIGNED_TO,R.PARTICIPATES_IN,R.RELATED_TO],limit=100))
                 # Enumerate real dependency paths, preserving edge identity/direction.
                 paths=[];queue=[(PREFIX+'appointment',[PREFIX+'appointment'],[])]
                 for current,ns,es in queue:
@@ -166,36 +176,20 @@ class StoryEngine:
                 handoffs.append(('planner',reason+' '+ ' '.join(constraints)+' Evidence path: '+route))
                 lines.append(reason)
                 if prior:lines.append(f'Retrieved {len(prior)} earlier verified outcome(s) from FalkorDB in this conversation.')
-                proposals=[]
-                # Only internal task actions are constructed by this scenario. All
-                # provider operations remain in the existing explicit approval UI.
-                if not graph['truncated'] and ('video' in intents or 'coordination' in intents or changes.get('priya_escort')=='CONFIRMED'):
-                    for path in paths:
-                        n=self.s.require(path['entity_id'])
-                        if n['type']!='Task' or n['properties'].get('status') in ('DONE','CANCELLED'):continue
-                        if len(path['edge_ids'])!=1:continue  # only direct travel; preserve downstream work
-                        changes_for_task={};assignee=None
-                        if root['properties'].get('location')=='video':changes_for_task={'status':'CANCELLED'}
-                        elif candidates:
-                            if len(candidates)>1:
-                                lines.append('More than one escort is available. Which person should take responsibility?');continue
-                            assignee=candidates[0]['id']
-                            if slots.get('appointment_anchor') and slots.get('cab_anchor'):
-                                delta=datetime.fromisoformat(when)-datetime.fromisoformat(self.at(slots['appointment_anchor'],day))
-                                changes_for_task={'starts_at':(datetime.fromisoformat(self.at(slots['cab_anchor'],day))+delta).isoformat()}
-                            else:
-                                lines.append('What was the original appointment time and cab pickup time? I need both to preserve the travel offset.');continue
-                        if not changes_for_task:continue
-                        payload={'task_id':n['id'],'changes':changes_for_task}
-                        if assignee:payload['assignee_id']=assignee
-                        proposals.append(ActionDraft(kind='task_update',payload=payload,reason=reason+' Internal simulation only; explicit approval is required. Evidence is user-reported.',affected_ids=[n['id'],root['id']],evidence_ids=[decision,req.id]+[p['id'] for p in prior[:2]]))
-                    manager=Actions(self.s)
-                    for draft in proposals:
-                        a=manager.propose(draft,req.id);proposal_ids.append(a['id'])
-                    if proposals:
-                        handoffs.append(('tasks','Prepared exact internal task changes for your review. No third-party cab booking is changed.'))
-                        handoffs.append(('communication','Unsent draft: '+('The visit is now by video; please review whether internal transport is still needed.' if 'video' in intents else 'The follow-up time has changed. Please review the proposed escort and internal transport arrangement.')+' No email or Slack message has been sent.'))
-                        lines.append('Review the inline approval card. Nothing has been executed by this chat turn.')
+            if slots.get('email_requested') and slots.get('appointment_start'):
+                from .story_words import email_draft
+                subject,body=email_draft(self.s,slots)
+                self.s.repo.upsert_node('story:email-draft',E.Source,{'name':subject,'description':body,'kind':'SYSTEM','record_kind':'EMAIL_DRAFT','recipient':slots.get('priya_email','Unknown'),'status':'DRAFT'})
+                self.s.repo.upsert_edge('story:email-draft',R.RELATED_TO,'story:appointment',{})
+            # Prepare the exact email using the existing approval contract. Never dispatch here.
+            if slots.get('email_requested') and slots.get('priya_email') and slots.get('appointment_start') and 'coordination' in intents:
+                from .story_words import email_draft
+                subject,body=email_draft(self.s,slots)
+                draft=ActionDraft(kind='gmail_send',payload={'to':[slots['priya_email']],'subject':subject,'body':body},reason='User requested an update to Priya. Reported family plan; explicit approval required.',affected_ids=['story:priya','story:appointment'],evidence_ids=[req.id]+([decision] if decision else []))
+                action=Actions(self.s).propose(draft,req.id);proposal_ids.append(action['id'])
+            if 'video' in intents and slots.get('appointment_start'):
+                from .story_checklist import ensure_checklist
+                checklist=ensure_checklist(self.s,req.id)
             # Presentation uses persisted current facts, never earlier response text.
             response,handoffs=present(self.s,slots,old,changes,intents,handoffs,proposal_ids,prior)
             self.db.execute('MATCH (s:OrbitStoryState {id:"story"}) SET s.slots=$slots',{'slots':json.dumps(slots)})
@@ -219,10 +213,15 @@ class StoryEngine:
         after=self.snapshot();old_nodes={n['id']:n for n in before['nodes']};old_edges={e['id']:e for e in before['edges']}
         def delta(items,old):
             return {'added':[n['id'] for n in items if n['id'] not in old],'updated':[n['id'] for n in items if n['id'] in old and n['properties']!=old[n['id']]['properties']]}
-        result={'user':user,'assistant':answer,'handoffs':messages,'graph_revision':state['graph_revision']+1,'entities':delta(after['nodes'],old_nodes),'relationships':delta(after['edges'],old_edges),'evidence':evidence,'decision_id':decision,'previous':prior,'action_ids':proposal_ids,'graph':after,'mode':'deterministic','source':req.source,'intents':parsed['intents'],'clarifications':parsed['questions'],'latency_ms':round((time.perf_counter()-started)*1000,2)}
+        result={'user':user,'assistant':answer,'handoffs':messages,'graph_revision':state['graph_revision']+1,'entities':delta(after['nodes'],old_nodes),'relationships':delta(after['edges'],old_edges),'evidence':evidence,'decision_id':decision,'previous':prior,'action_ids':proposal_ids,'checklist':checklist,'graph':after,'mode':'deterministic','source':req.source,'intents':parsed['intents'],'clarifications':parsed['questions'],'latency_ms':round((time.perf_counter()-started)*1000,2)}
         edge_ids={edge for path in analysis['affected'] for edge in path['edge_ids']} if decision else set()
         names={n['id']:n['properties'].get('name',n['id']) for n in after['nodes']}
         result['evidence_relationships']=[{'id':e['id'],'source':names[e['source']],'relationship':e['type'],'target':names[e['target']]} for e in after['edges'] if e['id'] in edge_ids]
+        if 'recall' in parsed['intents']:
+            root_id=PREFIX+('appointment' if slots.get('appointment_start') else 'aarav')
+            if any(n['id']==root_id for n in after['nodes']):
+                recalled=self.s.repo.traverse(TraversalRequest(root_id=root_id,hops=4,relationship_types=[R.PARENT_OF,R.SIBLING_OF,R.DEPENDS_ON,R.AVAILABLE_FOR,R.ASSIGNED_TO,R.PARTICIPATES_IN],limit=100))
+                result['recalled_ids']=[n['id'] for n in recalled['nodes']]
         result['domain_added']=[n['id'] for n in after['nodes'] if n['id'] not in old_nodes and n['type'] in ('Person','Event','Booking','Task') and not n['properties'].get('record_kind')]
         self.db.execute('CREATE (:OrbitStoryTurn {id:$id,response:$response,content:$content,conversation:$conversation,source:$source})',{'id':req.id,'response':json.dumps(result),'content':req.content,'conversation':req.conversation_id,'source':req.source})
         self.db.execute('MATCH (m:Message {id:$id}) SET m.story=$story',{'id':answer['id'],'story':json.dumps({k:v for k,v in result.items() if k not in ('graph','user','assistant')})})
