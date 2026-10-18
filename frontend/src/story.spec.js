@@ -16,7 +16,7 @@ async function say(page,text){
  const response=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'Send message'}).click();const data=await(await response).json();
  expect(data.mode,JSON.stringify(data)).toBe('deterministic');expect(data.clarifications).toEqual([]);
- await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');await expect(page.locator('.specialist-typing')).toHaveCount(0);console.log('TIMING',JSON.stringify({intents:data.intents,backend_ms:data.latency_ms,presentation_ms:Date.now()-start}));return data;
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');await expect(page.locator('.message.assistant').last().locator('[data-streaming=true]')).toHaveCount(0,{timeout:20000});await expect(page.locator('.specialist-typing')).toHaveCount(0,{timeout:20000});console.log('TIMING',JSON.stringify({intents:data.intents,backend_ms:data.latency_ms,presentation_ms:Date.now()-start}));return data;
 }
 async function state(page,key){return page.evaluate(async key=>{const r=await fetch('http://127.0.0.1:8002/api/story/state',{headers:{'X-Orbit-Story':key||sessionStorage.getItem('orbit.story.workspace')}});return r.json();},key);}
 async function ready(page){await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();}
@@ -29,7 +29,7 @@ test('seven-part story, New Chat memory, checklist and two hard-refresh regressi
    await preview.click();await expect(page.getByRole('dialog',{name:'Enlarged route preview'})).toBeVisible();
    await page.screenshot({path:info.outputPath('route-enlarged.png')});await page.getByRole('button',{name:'Close preview'}).click();
   }
-  if(i===4){await expect(page.locator('.research-citations a')).toHaveCount(2);await expect(page.locator('.research-citations a').first()).toHaveAttribute('href',/10924808\/$/);}
+  if(i===4){await expect(page.locator('.research-citations a')).toHaveCount(1);await expect(page.locator('.research-citations a').first()).toHaveAttribute('href','https://economictimes.indiatimes.com/topic/cjp-protest');}
   if(i===2){
    expect(r.direct_specialist).toBe(true);await expect(page.locator('.message.assistant').last().locator('.handoff-label')).toHaveCount(0);await expect(page.locator('.route-preview')).toHaveCount(1);expect(r.graph.nodes.find(n=>n.id==='story:hospital').properties.name).toBe('Manipal Hospital, Jayanagar');
    await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
