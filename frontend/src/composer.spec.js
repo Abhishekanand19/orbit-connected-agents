@@ -27,13 +27,14 @@ test('persisted graph grows without remounting nodes or resetting the viewport',
  await page.evaluate(()=>{window.__person=document.querySelector('[data-entity-id="story:ramesh"]');window.__position=window.__person.closest('.react-flow__node').style.transform;});
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('An unsent appointment at 11 AM');await expect(page.getByTestId('graph-canvas')).toHaveAttribute('data-node-count','3');
  const viewport=await page.locator('.react-flow__viewport').getAttribute('style');
- await say('Dad has a hospital appointment on Monday at 11 AM and an Uber at 9:45 AM.');
- await expect(page.locator('[data-entity-id="story:appointment"]').first()).toBeVisible();
+ await page.evaluate(()=>{window.nodeAnimations=[];const animate=Element.prototype.animate;Element.prototype.animate=function(frames,options){if(this.classList.contains('entity-node'))window.nodeAnimations.push({id:this.dataset.entityId,duration:options.duration});return animate.call(this,frames,options);};});
+ const graphStarted=Date.now();await say('Dad has a hospital appointment on Monday at 11 AM and an Uber at 9:45 AM.');
+ await expect(page.locator('[data-entity-id="story:appointment"]').first()).toBeVisible();console.log('GRAPH_PERSIST_TO_VISIBLE_TOTAL_MS',Date.now()-graphStarted);
  expect(await page.evaluate(()=>window.__person===document.querySelector('[data-entity-id="story:ramesh"]'))).toBe(true);
  expect(await page.evaluate(()=>document.querySelector('[data-entity-id="story:ramesh"]').closest('.react-flow__node').style.transform)).toBe(await page.evaluate(()=>window.__position));
  expect(await page.locator('.react-flow__viewport').getAttribute('style')).toBe(viewport);
- expect(await page.locator('.react-flow__edge').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('story-edge-arrive');
- expect(await page.locator('.entity-node.recently-changed').first().evaluate(e=>getComputedStyle(e).animationDuration)).toBe('0.38s');
+ await expect.poll(()=>page.locator('.react-flow__edge').first().evaluate(e=>getComputedStyle(e).animationName)).toBe('story-edge-arrive');
+ await expect.poll(()=>page.evaluate(()=>window.nodeAnimations.some(a=>a.id==='story:appointment'&&a.duration===380))).toBe(true);
  await page.screenshot({path:info.outputPath('growing-graph.png'),animations:'disabled'});
 });
 
