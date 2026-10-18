@@ -31,7 +31,7 @@ export function visibleGraph(graph:GraphData,root:string,type:string,collapsed:S
 export function layoutGraph(graph:GraphData,root:string,mode:ViewMode,type:string,collapsed:Set<string>,compact=false,previous=new Map<string,{x:number;y:number}>()) {
   const visible=visibleGraph(graph,root,type,collapsed,mode);
   const arranged=mode==='simple'?visibleGraph(graph,root,'',collapsed,mode):visible;
-  const width=mode==='simple'?224:124, height=mode==='simple'?94:124;
+  const width=mode==='simple'?224:152, height=mode==='simple'?94:152;
   if(mode==='network'){
     // Deterministic spring layout; only coordinates are calculated, never facts.
     const items=visible.nodes, positions=new Map<string,{x:number;y:number}>();
@@ -40,7 +40,7 @@ export function layoutGraph(graph:GraphData,root:string,mode:ViewMode,type:strin
       const force=new Map(items.map(n=>[n.id,{x:0,y:0}]));
       for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){
         const a=positions.get(items[i].id)!,b=positions.get(items[j].id)!;let dx=a.x-b.x,dy=a.y-b.y;const dist=Math.max(1,Math.hypot(dx,dy));
-        const push=26000/(dist*dist)+(dist<195?(195-dist)*.6:0);
+        const push=26000/(dist*dist)+(dist<210?(210-dist)*.6:0);
         const fa=force.get(items[i].id)!,fb=force.get(items[j].id)!;fa.x+=dx/dist*push;fa.y+=dy/dist*push;fb.x-=dx/dist*push;fb.y-=dy/dist*push;
       }
       for(const e of visible.edges){if(e.source===e.target)continue;const a=positions.get(e.source)!,b=positions.get(e.target)!;const dx=b.x-a.x,dy=b.y-a.y,dist=Math.max(1,Math.hypot(dx,dy)),pull=(dist-245)*.025;const fa=force.get(e.source)!,fb=force.get(e.target)!;fa.x+=dx/dist*pull;fa.y+=dy/dist*pull;fb.x-=dx/dist*pull;fb.y-=dy/dist*pull;}
