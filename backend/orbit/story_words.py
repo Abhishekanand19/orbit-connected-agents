@@ -24,9 +24,9 @@ def present(service,slots,old,changes,intents,handoffs,proposals,prior):
     if 'family' in intents and not intents.intersection({'schedule','video','coordination','availability','rumor'}):
         return "I'm sorry to hear about your dad's surgery. I hope he's recovering well.\n\nWhat would you like me to help arrange?",[]
     if 'rumor' in intents:
-        return "Let me ask Researcher to check what we actually know.",[('research',"Here's what I could establish from the available evidence.\n\n[ ] The student protest is reported in your WhatsApp message; it has not been independently confirmed.\n\n[✗] But MIT Hospital's closure remains unverified." if slots.get('rumor')=='UNVERIFIED' else "[✗] You reported that the closure claim was false. This correction is user-reported, not independently verified.")]
+        return "Let me ask Researcher to check what we actually know.",[('research',f"Here's what I could establish from the available evidence.\n\n[ ] The student protest is reported in your WhatsApp message; it has not been independently confirmed.\n\n[✗] But {slots.get('destination','The hospital')}'s closure remains unverified." if slots.get('rumor')=='UNVERIFIED' else "[✗] You reported that the closure claim was false. This correction is user-reported, not independently verified.")]
     if 'trip' in intents:
-        return "Let me ask Task Manager to record those trip details.",[('tasks',f"Got it! Here are the trip details.\n\n[✓] Pickup: {slots.get('pickup','still needed')}\n[✓] Destination: {slots.get('destination','still needed')}\n[✓] {day}, {cab}\n\n[ ] Uber booking pending — trip details prepared.")]
+        return "Let me ask Task Manager to record those trip details.",[('tasks',f"Got it! Here are the trip details.\n\n[✓] Pickup: {slots.get('pickup','still needed')}\n[✓] Destination: {slots.get('destination','still needed')}\n[✓] {day}, {cab}\n\n[ ] Uber booking pending — trip details are ready.")]
     if 'video' in intents and appt:
         recalled=(f"Of course, I remember. Dad's appointment was moved to {day} at {now}, and Priya had agreed to take him." if prior and escort else f"Dad's recorded appointment is {day} at {now}." )
         planner=f"Good news! We can simplify the arrangements.\n\n[✓] Dad's appointment remains {day} at {now}, now over video."
@@ -56,7 +56,7 @@ def present(service,slots,old,changes,intents,handoffs,proposals,prior):
         if properties(service,'physio'):lines.append(f"[✓] Dad's physiotherapy is at {clock(service,'physio')}.")
         return "Let me ask Planner to add those commitments.",[('planner',lines[0]+"\n\n"+"\n".join(lines[1:])+"\n\nI'll keep these in mind if anything changes.")]
     if 'schedule' in intents:
-        if slots.get('awaiting_trip')=='yes':return "Sure, let me ask Task Manager to help with the transport arrangements.",[('tasks',"Of course! Just need two details.\n\n[ ] Where should the cab pick you up?\n[ ] What's the destination?")]
+        if slots.get('awaiting_trip')=='yes':return "Sure, I'll get Task Manager to help with the transport arrangements.",[('tasks',"Of course! Just need two details.\n\n[ ] Where should the cab pick you up?\n[ ] What's the destination?")]
         return f"[✓] Dad's appointment is recorded for {day} at {now}.",[]
     if 'recall' in intents and appt:return f"Dad's recorded appointment is {day} at {now}."+(' Priya has agreed to accompany him.' if escort else ''),[]
     if 'summary' in intents:return f"Here is the recorded plan.\n\n[✓] Hospital appointment: {day}, {now}.\n[ ] External transport changes require provider confirmation.",[]
