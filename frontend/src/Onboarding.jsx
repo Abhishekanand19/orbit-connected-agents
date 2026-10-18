@@ -29,7 +29,7 @@ function Onboarding(){
  function finish(){try{localStorage.setItem(COMPLETE,'true');}catch{setError('Browser storage is unavailable. Allow local storage to finish setup.');return;}setLeaving(true);timer.current=setTimeout(()=>location.replace('/'),matchMedia('(prefers-reduced-motion: reduce)').matches?0:350);}
  return <main className={`onboarding ${step==='apps'?'apps-page':'welcome-page'} ${leaving?'leaving':''}`}>
  {step==='welcome'?<>
-  <p className="signin-demo-notice" id="demo-input-note">ORBIT onboarding demo · Not Google sign-in. Nothing you type is saved or sent.</p>
+  <div className="signin-demo-notice"><Mark word/><span id="demo-input-note">Demo preview · No Google authentication</span></div>
   <section className="signin-reference" aria-label="Demonstration sign-in layout"><h1 className="visually-hidden">Sign in — Orbit demo</h1>
    <img src="/brand/signin-reference.png" alt="Google sign-in visual reference used for the Orbit demonstration"/>
    <form onSubmit={e=>{e.preventDefault();e.currentTarget.reset();go('apps');}} autoComplete="off">
