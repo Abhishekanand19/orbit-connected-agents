@@ -26,6 +26,8 @@ export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,clo
   const refresh=useCallback(()=>{setRevision(v=>v+1);setOffset(0);},[]);
   useEffect(()=>{const prior=document.activeElement as HTMLElement;if(!docked)dialog.current?.showModal();const invalidate=()=>refresh();window.addEventListener('orbit:graph-changed',invalidate);return()=>{window.removeEventListener('orbit:graph-changed',invalidate);prior?.focus();};},[refresh]);
   useEffect(()=>{
+    // The story snapshot already contains the scoped entity directory.
+    if(story){setSearching(false);setSearchError('');setNext(null);return;}
     const controller=new AbortController();setSearching(true);setSearchError('');if(offset===0)setEntities([]);
     const timer=setTimeout(()=>{
       graphService.search(query,filter,offset,controller.signal).then(page=>{
@@ -38,16 +40,17 @@ export default function GraphWorkspace({initialMode,initialRoot,rememberRoot,clo
     return()=>{clearTimeout(timer);controller.abort();};
     // Root changes do not require reloading the entity directory.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[query,filter,offset,revision]);
+  },[query,filter,offset,revision,story]);
   useEffect(()=>{
     if(!root&&!story)return;
     const controller=new AbortController();setLoading(true);setError('');setCollapsed(new Set());
     (story?graphService.story(controller.signal,conversationId):graphService.subgraph(root,hops,controller.signal)).then(data=>{
       if(controller.signal.aborted)return;
       setGraph(data);setLoadedAt(new Date());setSelection({kind:'node',id:root});
+      if(story&&!root&&data.nodes.length)focus((data.nodes.find(n=>n.type==='Person')||data.nodes[0]).id);
     }).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return()=>controller.abort();
-  },[root,hops,revision,conversationId]);
+  },[story?'':root,story?0:hops,revision,conversationId,story]);
   const displayed=graph?(story?withinHops(planProjection(graph,scope),root,hops):graph):null;
   const focusNode=graph?.nodes.find(n=>n.id===root);
   const Container=docked?'section':'dialog';
