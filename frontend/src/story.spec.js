@@ -1,38 +1,78 @@
 import {test,expect} from '@playwright/test';
-test('original workspace eight-stage visual acceptance',async({page},testInfo)=>{
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('orbit.onboarding.complete.v1','true'));});
+const inputs=[
+ "Hey bro, my parents and my sister are coming together this weekend for my dad's post-surgery care.",
+ "Yeah buddy, help me make the arrangements. Dad has a hospital appointment on Monday at 11 AM. Can you book an Uber for 9:45 AM?",
+ "From PES University, Bengaluru, to MIT Hospital.",
+ "One more thing. Mom's busy after 12:30 PM, I've got a team meeting at 2:30 PM, and Dad has physiotherapy at 4 PM.",
+ "Hey, I saw a WhatsApp message saying hospitals are closed because of the ongoing student protests. Can you check whether MIT Hospital is actually closed?",
+ "Hey, I just got an email from the hospital. Dad's Monday appointment has been moved from 11 AM to 1:45 PM. I'm a bit confused now. Can you help me figure things out?",
+ "Okay, Priya said she can take Dad to the hospital on Monday. Can you update the plan and email her about the changes?",
+ "Hey buddy, remember Dad's hospital appointment? The hospital now says he can attend Monday's 1:45 PM appointment over video. What changes in our plan?"
+];
+async function say(page,text){
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill(text);
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');
+ await page.getByRole('button',{name:'Send message'}).click();const data=await(await response).json();
+ expect(data.mode,JSON.stringify(data)).toBe('deterministic');expect(data.clarifications).toEqual([]);
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');return data;
+}
+async function state(page,key){return page.evaluate(async key=>{const r=await fetch('http://127.0.0.1:8002/api/story/state',{headers:{'X-Orbit-Story':key||sessionStorage.getItem('orbit.story.workspace')}});return r.json();},key);}
+async function ready(page){await expect(page.getByRole('heading',{name:'Coordinator',exact:true})).toBeVisible();}
+
+test('seven-part story, New Chat memory, checklist and two hard-refresh regressions',async({page},info)=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/');await expect(page.getByRole('heading',{name:'Orbit Coordinator'})).toBeVisible();
- await expect(page.getByRole('navigation',{name:'Your bots'})).toBeVisible();
- await expect(page.getByRole('button',{name:'Start deterministic family demo'})).toHaveCount(0);
- await page.screenshot({path:testInfo.outputPath('workspace.png')});
- await page.getByRole('button',{name:'Toggle bot settings'}).click();await expect(page.getByLabel('Conversation engine')).toBeVisible();await page.getByRole('button',{name:'Close settings'}).click();
- const timings=[],results=[];
- async function say(text){const started=Date.now();await page.getByRole('textbox',{name:'Message',exact:true}).fill(text);const response=page.waitForResponse(r=>r.url().endsWith('/api/chat')&&r.request().method()==='POST');await page.getByRole('button',{name:'Send message'}).click();const data=await(await response).json();expect(data.mode,JSON.stringify(data)).toBe('deterministic');expect(data.clarifications).toEqual([]);await expect(page.getByRole('button',{name:'Send message'})).toBeDisabled();results.push(data);timings.push(Date.now()-started);return data;}
- async function views(stage){
-  await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
-  const dialog=page.getByRole('dialog',{name:'Graph exploration workspace'});await expect(dialog.getByTestId('graph-canvas')).toBeVisible();
-  await expect(dialog.locator('.entity-node.network').first()).toBeVisible();
-  await expect.poll(async()=>dialog.locator('[data-entity-id]').evaluateAll(nodes=>{const boxes=nodes.map(n=>n.getBoundingClientRect());return boxes.every((a,i)=>boxes.every((b,j)=>i===j||Math.hypot(a.x+a.width/2-b.x-b.width/2,a.y+a.height/2-b.y-b.height/2)>(a.width+b.width)/2-2));})).toBe(true);
-  if(stage===1){await dialog.getByLabel('Graph context').selectOption('people');await expect(dialog.getByTestId('graph-canvas')).toHaveAttribute('data-node-count','3');await expect(dialog.getByTestId('graph-canvas')).toHaveAttribute('data-edge-count','2');}
-  await dialog.getByRole('button',{name:'Fit View',exact:true}).click();
-  await page.evaluate(()=>new Promise(resolve=>{let last='',stable=0,frames=0;function frame(){const transform=document.querySelector('.react-flow__viewport')?.getAttribute('style')||'';stable=transform===last?stable+1:0;last=transform;if(stable>=5||frames++>120)resolve(null);else requestAnimationFrame(frame);}requestAnimationFrame(frame);}));
-  await page.screenshot({path:testInfo.outputPath(`stage${stage}-network.png`),animations:'disabled'});
-  await dialog.getByRole('button',{name:'Simple View',exact:true}).click();await expect(dialog.getByTestId('simple-explanation')).toBeVisible();
-  await page.screenshot({path:testInfo.outputPath(`stage${stage}-simple.png`),animations:'disabled'});
-  if(stage>=5)await expect(dialog.getByTestId('simple-explanation')).toContainText('1:45');
-  await dialog.getByRole('button',{name:'Close graph workspace'}).click();
+ await page.goto('/');await ready(page);expect((await state(page)).graph.nodes).toEqual([]);
+ let first;for(let i=0;i<7;i++){const r=await say(page,inputs[i]);if(i===0){first=r;expect(r.graph.nodes.filter(n=>n.type==='Person')).toHaveLength(3);}}
+ await expect(page.getByRole('log')).toContainText("What's Priya's email address?");
+ await say(page,'Her email is priya@example.com.');await expect(page.getByRole('button',{name:'Approve exact action'})).toHaveCount(1);
+ await expect(page.getByRole('log')).not.toContainText('Email sent to Priya');
+ await page.getByRole('button',{name:'Approve exact action'}).scrollIntoViewIfNeeded();await page.screenshot({animations:'disabled',path:info.outputPath('part6-approval.png')});
+ const run=await page.evaluate(()=>sessionStorage.getItem('orbit.story.workspace'));
+ await page.getByRole('button',{name:'New Chat',exact:true}).click();await expect(page.locator('.message')).toHaveCount(0);
+ expect(await page.evaluate(()=>sessionStorage.getItem('orbit.story.workspace'))).toBe(run);
+ const video=await say(page,inputs[7]);expect(video.previous.length).toBeGreaterThan(0);
+ await expect(page.getByRole('log')).toContainText('Of course, I remember.');
+ const check=page.getByRole('checkbox',{name:/Confirm video joining details with the hospital/});await check.click();await expect(check).toBeChecked();
+ expect((await state(page)).graph.nodes.find(n=>n.id==='story:checklist:joining').properties.evidence_status).toBe('USER_REPORTED');
+ await page.getByRole('button',{name:'Open Graph View',exact:true}).click();
+ const graph=page.getByRole('region',{name:'Graph exploration workspace'});await expect(graph.getByTestId('graph-canvas')).toBeVisible();
+ await page.screenshot({animations:'disabled',path:info.outputPath('part7-network.png')});
+ await graph.getByRole('button',{name:'Simple View',exact:true}).click();await expect(graph.getByTestId('simple-explanation')).toBeVisible();
+ await expect(graph.getByTestId('simple-explanation')).toContainText('Your linked checklist');
+ await expect(graph.getByTestId('simple-explanation')).toContainText('User-reported complete');
+ await page.screenshot({animations:'disabled',path:info.outputPath('part7-simple.png')});
+ const cdp=await page.context().newCDPSession(page);
+ for(let iteration=0;iteration<2;iteration++){
+  const prior=await page.evaluate(()=>sessionStorage.getItem('orbit.story.workspace'));
+  await cdp.send('Page.reload',{ignoreCache:true});await ready(page);
+  await expect(page.locator('.message')).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');
+  expect(await page.evaluate(()=>sessionStorage.getItem('orbit.story.workspace'))).not.toBe(prior);
+  expect((await state(page)).graph.nodes).toEqual([]);expect((await state(page,prior)).graph.nodes.length).toBeGreaterThan(0);
+  const intro=await say(page,inputs[0]);expect(intro.assistant.properties.content).toBe(first.assistant.properties.content);expect(intro.handoffs).toEqual([]);
+  await expect(page.locator('.message.user')).toHaveCount(1);await expect(page.locator('.message.assistant')).toHaveCount(1);
+  await expect(page.getByRole('log')).not.toContainText('video consultation');await expect(page.getByRole('log')).not.toContainText('1:45 PM');
+  if(iteration===0)for(const text of inputs.slice(1,4))await say(page,text);
  }
- const inputs=["Hey Orbit, I'm Aarav. My dad is Ramesh and Priya is my sister.","Dad has a follow-up at 11 tomorrow. Mom Meera is taking him, and the cab arrives at 9:45.","Mom is busy after 12:30, Priya is free from noon, my deployment is at 2:30, and Dad has physio at 4.","Someone forwarded a message saying the hospital is closed because of a protest. Should I cancel the cab?","The hospital emailed me that Dad's appointment moved from 11 to 1:45. What does that affect?","Priya confirmed she can take Dad. Can you organize everything and tell everyone?","Hey Orbit, remember Dad's appointment? The hospital says he can do it over video now. Do we still need the cab?","Perfect, where do things stand now?"];
- await say(inputs[0]);await views(1);await say(inputs[1]);await views(2);await say(inputs[2]);await views(3);await say(inputs[3]);await views(4);await expect(page.getByRole('log')).toContainText('Research Assistant');await say(inputs[4]);await views(5);
- const sixth=await say(inputs[5]);await views(6);expect(sixth.handoffs.map(h=>h.agent)).toEqual(['planner','tasks','communication']);await page.getByRole('button',{name:'Approve exact action',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('inline-approval.png')});
- await page.getByRole('button',{name:'Why?',exact:true}).last().click();await expect(page.getByRole('dialog',{name:'Why did Orbit do this?'})).toContainText('WAITING');await page.getByRole('button',{name:'Close explanation'}).click();
- const approve=page.getByRole('button',{name:'Approve exact action',exact:true});await expect(approve).toHaveCount(1);await approve.click();await expect(page.getByRole('log')).toContainText('Verified by fresh readback');
- const oldConversation=sixth.user.properties.conversation_id;
- const newResponse=page.waitForResponse(r=>r.url().endsWith('/api/story/conversations'));await page.getByRole('button',{name:'New Chat',exact:true}).click();const newId=(await(await newResponse).json()).id;expect(newId).not.toBe(oldConversation);
- await expect(page.locator('.message')).toHaveCount(0);await page.screenshot({animations:'disabled',path:testInfo.outputPath('new-chat.png')});
- await page.reload();await expect(page.locator('.message')).toHaveCount(0);
- const seventh=await say(inputs[6]);expect(seventh.previous.length).toBeGreaterThan(0);await expect(page.getByRole('log')).toContainText('1:45 PM');await page.locator('.message.assistant').last().scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('cross-session.png')});await views(7);
- await expect(approve).toHaveCount(1);await approve.click();await expect(page.getByRole('log')).toContainText('Verified by fresh readback');await say(inputs[7]);await views(8);await expect(page.getByRole('log')).toContainText('removed after approval and verified readback');
- await page.reload();await expect(page.getByRole('log')).toContainText('removed after approval and verified readback');expect(errors).toEqual([]);
- console.log(JSON.stringify({chat_roundtrip_ms:timings,stages:results.map(r=>({intents:r.intents,revision:r.graph_revision}))}));
+ await page.screenshot({animations:'disabled',path:info.outputPath('refreshed-introduction.png')});expect(errors).toEqual([]);
+});
+
+test('workspace menu repeats existing onboarding without revoking connectors',async({page})=>{
+ await page.goto('/');await ready(page);
+ for(let i=0;i<2;i++){
+  await page.getByRole('button',{name:'Abhishek Anand workspace menu'}).click();
+  await page.getByRole('menuitem',{name:'Restart onboarding'}).click();
+  await expect(page.getByRole('heading',{name:'Welcome to Orbit.',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Next',exact:true}).click();
+  await page.getByRole('button',{name:'Continue to Orbit',exact:true}).click();await ready(page);
+ }
+ await page.reload();await ready(page);await expect(page.getByRole('heading',{name:'Welcome to Orbit',exact:true})).toHaveCount(0);
+});
+
+test('normal-mode reload retains conversation and does not create story runs',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('orbit.chat.mode','normal'));
+ let creations=0;page.on('request',r=>{if(r.url().endsWith('/api/story/workspaces'))creations++;});
+ await page.route('**/api/chat/bots/coordinator/latest',r=>r.fulfill({json:{conversation_id:'normal:saved',messages:[{id:'normal:msg',created_at:1,properties:{role:'assistant',content:'Existing normal conversation'}}]}}));
+ await page.goto('/');await expect(page.getByRole('log')).toContainText('Existing normal conversation');
+ await page.reload();await expect(page.getByRole('log')).toContainText('Existing normal conversation');expect(creations).toBe(0);
 });
