@@ -7,7 +7,7 @@
 
   *Graph Hacks 2026 · Track 01 — Agents That Act on Connected Data · Powered by FalkorDB*
 
-  [**▶ Watch the Demo**](YOUR_VIDEO_LINK) · [**Live Demo**](YOUR_LIVE_DEMO_LINK) · [**Run Locally**](#run-orbit-locally)
+  [**▶ Watch the Demo**](https://youtu.be/R2z8BBJwNdE) · [**Live Demo**](YOUR_LIVE_DEMO_LINK) · [**Run Locally**](#run-orbit-locally)
 </div>
 
 ---
