@@ -121,12 +121,22 @@ Test the graph-dependent decisions:
 .\.venv\Scripts\python.exe -m pytest tests/orbit/test_part5_paths.py -q
 ```
 
-## Demo transparency
 
-**Google Gemini** is ORBIT’s integrated LLM for normal AI conversations and agent workflows. The recorded seven-part walkthrough uses reproducible, templated dialogue; its memory updates, multi-hop traversal, graph-dependent decisions and evidence paths execute against **FalkorDB** without live Gemini calls during that walkthrough. Cab arrangements in the story are simulations, **not confirmed Uber bookings**; visual onboarding toggles do not establish real provider authorization.
+## How ORBIT Learns & Generates Responses
 
-**Built by [Abhishek Anand](https://github.com/Abhishekanand19) — solo submission.** AI coding assistants supported development, testing and documentation; project direction, integration decisions and final verification were developer-led.
+ORBIT uses Google's **pretrained Gemini LLM**, enhanced with a **GraphRAG-style architecture powered by FalkorDB**, rather than training a model from scratch.
 
+When a user interacts with ORBIT:
+
+1. **Knowledge Extraction:** Gemini extracts relevant entities, facts and commitments into structured data.
+2. **Persistent Graph Memory:** FalkorDB stores these facts as connected entities and relationships, preserving evidence and previous decisions.
+3. **Context Retrieval:** The FastAPI backend uses relevance ranking and multi-hop Cypher traversals to retrieve connected information.
+4. **Response Generation:** Retrieved graph context, conversation history and agent instructions are passed to Gemini to generate context-aware responses.
+5. **Continuous Memory Updates:** New information updates the graph, allowing all five agents to reuse context across conversations.
+
+This enables ORBIT to **adapt to new information without retraining the underlying LLM**.
+
+**Built by [Abhishek Anand](https://github.com/Abhishekanand19) with hardwork , patience and 💝
 ---
 
 <div align="center"><strong>ORBIT doesn't just remember what happened. It understands what that changes.</strong></div>
