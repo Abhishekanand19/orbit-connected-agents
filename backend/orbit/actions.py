@@ -26,6 +26,10 @@ class Actions:
     def __init__(self,service,providers=None):
         self.s=service;self.db=service.repo.db;self.providers=providers or ActionProviders()
 
+    def policy(self,kind):
+        if self.db.settings.public_demo and kind not in ('task_create','task_update'):
+            raise GraphError(403,'public_demo_policy','External account actions are disabled in the public demo. No message was sent.')
+
     def get(self,id):
         n=self.s.require(id,{E.Action})
         if n['properties'].get('record_kind')!='APPROVAL_ACTION':raise GraphError(404,'not_action','No executable action found.')
@@ -94,7 +98,7 @@ class Actions:
         if not isinstance(draft,ActionDraft):draft=ActionDraft.model_validate(draft)
         message=self.s.require(message_id,{E.Message})
         if message['properties']['role']!='user':raise GraphError(422,'user_request_required','Actions require a user request.')
-        spec=draft.model_dump(mode='json');self.check_constraints(spec)
+        spec=draft.model_dump(mode='json');self.policy(spec['kind']);self.check_constraints(spec)
         for id in spec['affected_ids']:self.s.require(id,{E.Person,E.Event,E.Booking,E.Task})
         for id in spec['evidence_ids']:self.s.require(id,{E.Source,E.Claim,E.Message,E.Decision,E.Action,E.Outcome})
         if spec['kind'].startswith('task'):
@@ -139,6 +143,7 @@ class Actions:
 
     def valid(self,n,digest,owner,fresh=True):
         p=n['properties'];spec=json.loads(p['spec'])
+        self.policy(spec['kind'])
         seal={'spec':spec,'context_hash':p['context_hash'],'owner':p['owner'],'account':p['account'],'expires_at':p['expires_at']}
         if owner!=OWNER or p['owner']!=owner:raise GraphError(403,'wrong_owner','Only the authorized local owner may approve.')
         if not secrets.compare_digest(p['digest'],digest) or fingerprint(seal)!=digest:
@@ -222,7 +227,7 @@ class Actions:
         if tool!=p['tool'] or p.get('approved_owner')!=OWNER or p.get('approved_digest')!=digest:
             raise GraphError(403,'approval_required','This exact action requires an explicit user approval.')
         if p['status']!='APPROVED':return self.view(n)
-        spec=self.valid(n,digest,OWNER)
+        spec=self.valid(n,digest,OWNER);self.policy(spec['kind'])
         if not self.transition(id,['APPROVED'],'EXECUTING',{'started_at':timestamp(),'transport':'mcp-memory'}):return self.view(self.get(id))
         try:
             receipt=self.task_write(spec,id) if spec['kind'].startswith('task') else self.providers.perform(spec['kind'],spec['payload'],id)
@@ -237,7 +242,7 @@ class Actions:
         return self.verify_tool(id,digest)
 
     def verify_tool(self,id,digest):
-        n=self.get(id);p=n['properties'];spec=self.valid(n,digest,OWNER,fresh=False)
+        n=self.get(id);p=n['properties'];spec=self.valid(n,digest,OWNER,fresh=False);self.policy(spec['kind'])
         if p['status']=='VERIFIED':return self.view(n)
         if p['status'] not in ('EXECUTING','UNKNOWN'):raise GraphError(409,'not_executed','There is no uncertain execution to verify.')
         if self.providers.account(spec['kind'])!=p['account']:raise GraphError(409,'account_changed','Reconnect the original account for readback.')

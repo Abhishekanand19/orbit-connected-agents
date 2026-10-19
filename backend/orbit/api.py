@@ -47,7 +47,8 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(title='ORBIT — FalkorDB Foundation',version='0.1.0',lifespan=lifespan)
     from starlette.middleware.trustedhost import TrustedHostMiddleware
-    app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','testserver'])
+    app.add_middleware(TrustedHostMiddleware,allowed_hosts=settings.allowed_hosts)
+    app.state.settings = settings
     from .integration_auth import mount_auth
     mount_auth(app)
     from .onboarding import mount_onboarding
@@ -62,8 +63,9 @@ def create_app(settings: Settings | None = None):
     mount_attachments(app)
     from .demo import mount_demo
     mount_demo(app)
-    app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
-        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI','X-Orbit-Story'],allow_credentials=True)
+
+    from .public_demo import mount_public_demo
+    mount_public_demo(app, settings)
 
     @app.middleware('http')
     async def local_browser_guard(request: Request, call_next):
@@ -71,6 +73,9 @@ def create_app(settings: Settings | None = None):
         if request.method not in ('GET','HEAD','OPTIONS') and origin and origin not in settings.allowed_origins:
             return JSONResponse({'error':{'code':'origin_denied','message':'Browser origin is not allowed.'}},status_code=403)
         return await call_next(request)
+
+    app.add_middleware(CORSMiddleware,allow_origins=settings.allowed_origins,
+        allow_methods=['GET','POST','PUT','DELETE'],allow_headers=['Content-Type','X-Orbit-UI','X-Orbit-Story'],allow_credentials=True)
 
     @app.exception_handler(GraphError)
     async def graph_error(request, error):

@@ -1,6 +1,7 @@
 """Opt-in isolated story workspaces. No reset/delete and no model calls."""
 import re
 import json
+import threading
 from uuid import uuid4
 from datetime import datetime,timezone,timedelta
 from fastapi import Request
@@ -11,6 +12,8 @@ from .repository import GraphRepository
 from .service import GraphService
 from .models import ConversationCreate,NodeUpsert,StrictModel
 from pydantic import StrictBool
+
+_creation_lock = threading.Lock()
 
 class ChecklistUpdate(StrictModel):
     checked: StrictBool
@@ -31,6 +34,9 @@ def mount_story(app,settings):
             if rows[0][0]!='orbit_story_'+key:raise GraphError(409,'story_workspace','Workspace identity mismatch.')
             db=Database(settings.model_copy(update={'graph':rows[0][0]}))
             await run_in_threadpool(db.initialize)
+            if settings.public_demo and request.method == 'POST':
+                count=await run_in_threadpool(db.execute,'MATCH (n) RETURN count(n)',read=True)
+                if count[0][0] >= 2000:raise GraphError(429,'demo_capacity','This demo workspace is full.')
             request.state.story_service=GraphService(GraphRepository(db))
             return await call_next(request)
         except GraphError as e:return JSONResponse({'error':{'code':e.code,'message':e.message}},status_code=e.status)
@@ -39,6 +45,13 @@ def mount_story(app,settings):
 
     @app.post('/api/story/workspaces')
     def create(request:Request):
+        with _creation_lock:
+            return allocate(request)
+
+    def allocate(request):
+        if settings.public_demo:
+            rows=request.app.state.service.repo.db.execute('MATCH (w:OrbitStoryWorkspace) RETURN count(w)',read=True)
+            if rows[0][0]>=100:raise GraphError(429,'demo_capacity','Demo workspace capacity reached.')
         key=uuid4().hex;graph='orbit_story_'+key
         db=Database(settings.model_copy(update={'graph':graph}))
         try:

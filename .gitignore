@@ -17,6 +17,12 @@ __pycache__/
 !.env.example
 .coverage
 htmlcov/
+*.pem
+*.key
+credentials*.json
+client_secret*.json
+token.json
+tokens.json
 .env 
 .env.* 
 .env.example 

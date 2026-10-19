@@ -28,7 +28,7 @@ def mount_actions(app,settings):
         browser(request)
         token=secrets.token_urlsafe(32);digest=hashlib.sha256(token.encode()).hexdigest()
         service(request).repo.db.execute('MERGE (s:OrbitApprovalSession {id:$id}) SET s.owner=$owner,s.expires=$expires',{'id':digest,'owner':OWNER,'expires':time.time()+86400})
-        response.set_cookie('orbit_approval_session',token,httponly=True,samesite='strict',max_age=86400,path='/api/actions')
+        response.set_cookie('orbit_approval_session',token,httponly=True,samesite='none' if settings.public_demo else 'strict',secure=settings.public_demo,max_age=86400,path='/api/actions')
         response.headers['Cache-Control']='no-store'
         return {'owner':OWNER}
 

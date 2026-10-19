@@ -203,7 +203,7 @@ class StoryEngine:
                 self.s.repo.upsert_node('story:email-draft',E.Source,{'name':subject,'description':body,'kind':'SYSTEM','record_kind':'EMAIL_DRAFT','recipient':slots.get('priya_email','Unknown'),'status':'DRAFT'})
                 self.s.repo.upsert_edge('story:email-draft',R.RELATED_TO,'story:appointment',{})
             # Prepare the exact email using the existing approval contract. Never dispatch here.
-            if slots.get('email_requested') and slots.get('priya_email') and slots.get('appointment_start') and 'coordination' in intents:
+            if not self.db.settings.public_demo and slots.get('email_requested') and slots.get('priya_email') and slots.get('appointment_start') and 'coordination' in intents:
                 from .story_words import email_draft
                 subject,body=email_draft(self.s,slots)
                 draft=ActionDraft(kind='gmail_send',payload={'to':[slots['priya_email']],'subject':subject,'body':body},reason='User requested an update to Priya. Reported family plan; explicit approval required.',affected_ids=['story:priya','story:appointment'],evidence_ids=[req.id]+([decision] if decision else []))
@@ -213,6 +213,8 @@ class StoryEngine:
                 checklist=ensure_checklist(self.s,req.id)
             # Presentation uses persisted current facts, never earlier response text.
             response,handoffs=present(self.s,slots,old,changes,intents,handoffs,proposal_ids,prior,analysis)
+            if self.db.settings.public_demo:
+                handoffs=[(agent,text.replace('Waiting for approval to email Priya.','Email draft only. Sending is disabled in this public demo.')) for agent,text in handoffs]
             if slots.get('awaiting_trip')=='yes':
                 slots['pending_specialist']='tasks';slots['required_slots']=[k for k in ('pickup','destination') if not slots.get(k)];slots['pending_conversation']=req.conversation_id
             elif 'trip' in intents:

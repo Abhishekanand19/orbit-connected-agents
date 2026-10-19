@@ -28,7 +28,7 @@ class Database:
             try:
                 if self.client is None:
                     s = self.settings
-                    self.client = FalkorDB(host=s.host, port=s.port, password=s.password,
+                    self.client = FalkorDB(host=s.host, port=s.port, username=s.username, password=s.password,
                         ssl=s.ssl, socket_timeout=s.socket_timeout,
                         socket_connect_timeout=s.connect_timeout, max_connections=16,
                         retry=Retry(NoBackoff(), 0))
