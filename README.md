@@ -7,9 +7,10 @@
 
   *Graph Hacks 2026 · Track 01 — Agents That Act on Connected Data · Powered by FalkorDB*
 
+  <img src="docs/images/orbit-demo-thumbnail.png" alt="ORBIT project demo thumbnail" width="780" />
+
   [**▶ Watch the Demo**](https://youtu.be/R2z8BBJwNdE) · [**Live Demo**](https://orbit-connected-agents.vercel.app/) · [**Run Locally**](#run-orbit-locally)
 </div>
-
 ---
 
 ## The idea
