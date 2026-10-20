@@ -9,7 +9,7 @@
 
   <img src="docs/images/orbit-demo-thumbnail.png" alt="ORBIT project demo thumbnail" width="780" />
 
-  [**🎥 Watch MY Demo**](https://youtu.be/R2z8BBJwNdE) · [**Live Website **](https://orbit-connected-agents.vercel.app/) · [**Run Locally**](#run-orbit-locally)
+  [**🎥 Watch MY Demo**](https://youtu.be/R2z8BBJwNdE) | [Live Website](https://orbit-connected-agents.vercel.app/) |  [**Run Locally**](#run-orbit-locally)
 </div>
 
 
