@@ -138,13 +138,11 @@ This enables ORBIT to **adapt to new information without retraining the underlyi
 
 ## AI Usage Disclosure
 
-AI tools (Codex)were extensively used for backend code generation and implementation.
+AI tools (Codex) were extensively used for backend code generation and implementation.
 
 However, the **Frontend,  agent workflows, feature decisions, and overall creative direction** were entirely my own.
 
 I personally guided the development process, tested and refined the implementation, and independently handled the **demo preparation, video recording, editing, and final presentation**.
-
-AI was used as a coding assistant, while the project's vision, decisions, and direction were driven by me.
 
 **Built by [Abhishek Anand](https://github.com/Abhishekanand19) with hardwork , patience and 💝
 ---
